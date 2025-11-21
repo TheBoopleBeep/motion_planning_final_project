@@ -15,7 +15,7 @@ from robot_adapter import RobotAdapter
 
 def _build_base_scene(camera_pos=(3, -1, 1.5), camera_lookat=(0.0, 0.0, 0.5)) -> gs.Scene:
     scene = gs.Scene(
-        sim_options=gs.options.SimOptions(dt=0.01, substeps=8),
+        sim_options=gs.options.SimOptions(dt=0.01, substeps=4),
         viewer_options=gs.options.ViewerOptions(
             camera_pos=camera_pos,
             camera_lookat=camera_lookat,
