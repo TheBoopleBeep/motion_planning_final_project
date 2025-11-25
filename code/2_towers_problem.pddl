@@ -1,5 +1,5 @@
 (define (problem two-towers)
-  (:domain blocks-world)
+  (:domain towers-blocks-world)
   
   (:objects r g b c m y - block)
   
@@ -12,6 +12,8 @@
   )
   
   (:goal (and
+    (inplace b)
+    (inplace c)
     (on g b)
     (on r g)
     (on m c)

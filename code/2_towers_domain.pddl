@@ -1,4 +1,4 @@
-(define (domain blocks-world)
+(define (domain towers-blocks-world)
   (:requirements :strips :typing)
   
   (:types block)
@@ -9,6 +9,7 @@
     (ontable ?x - block)  ; block x is on the table
     (holding ?x - block)  ; robot is holding block x
     (handempty) ; robot hand is empty
+    (inplace ?x - block) ; block x is in the right place
   )
   
   (:action pick
@@ -33,5 +34,11 @@
     :parameters (?x - block ?y - block)
     :precondition (and (holding ?x) (clear ?y)) ; x is held and y is clear
     :effect (and (on ?x ?y) (clear ?x) (handempty) (not (holding ?x)) (not (clear ?y))) ; x is on y and y is not clear and x is no longer held and x is clear
+  )
+
+  (:action placespecific
+    :parameters (?x - block)
+    :precondition (holding ?x)
+    :effect (and (clear ?x) (ontable ?x) (inplace ?x) (handempty) (not (holding ?x)))  ; x is clear and on table in place and not held
   )
 )
