@@ -212,7 +212,7 @@ def PLACE_SPECIFIC(block, position, blocks_state, franka, scene):
     # bpos = np.asarray(b.get_pos(), dtype=np.float64)
 
     #move above target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.30]))
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.23]))
     # #lower to target position
     move_while_closed(franka, scene, position + np.array([0, 0, 0.17]))
     # #release
