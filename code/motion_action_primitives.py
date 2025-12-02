@@ -273,6 +273,20 @@ def PLACESOUTH(block1, block2, blocks_state, franka, scene):
     # #move up
     move_while_open(franka, scene, b2pos + np.array([0, -0.8, 0.3]))
 
+def PLACE_SPECIFIC(block, position, blocks_state, franka, scene):
+    b = blocks_state[block]
+    # Convert Genesis positions to proper numpy arrays
+    # bpos = np.asarray(b.get_pos(), dtype=np.float64)
+
+    #move above target position
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.23]))
+    # #lower to target position
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.17]))
+    # #release
+    open_gripper(franka, scene)
+    # #move up
+    move_while_open(franka, scene, position + np.array([0, 0, 0.3]))
+
 
 def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
     """
@@ -322,6 +336,23 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
             # place block (not used in typical tower building)
             block = parts[1]
             print(f"WARNING: Place action not fully implemented for block {block}")
+
+        elif action_name == "placespecific":
+            # place block at a specific position
+            block = parts[1]
+            # Define target positions for each block
+            target_positions = {
+                'b': np.array([0.4, -0.4, 0.0]),
+                'm': np.array([0.4, -0.2, 0.0]),
+            }
+            if block == 'b':
+                position = target_positions['b']
+            elif block == 'm':
+                position = target_positions['m']
+            else:
+                print(f"ERROR: Unknown block for placespecific: {block}")
+                continue
+            PLACE_SPECIFIC(block, position, blocks_state, franka, scene)
             
         else:
             print(f"ERROR: Unknown action: {action_name}")
