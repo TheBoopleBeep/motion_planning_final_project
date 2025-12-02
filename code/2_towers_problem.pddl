@@ -13,7 +13,7 @@
   
   (:goal (and
     (inplace b)
-    (inplace m)
+    (inplace c)
     (on g b)
     (on r g)
     (on m c)

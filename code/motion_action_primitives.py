@@ -19,6 +19,7 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max
     # Default quaternion if not provided
     if quat is None:
         quat = np.array([0, 1, 0, 0])
+
     
     # Retry loop for IK and path planning
     for attempt in range(max_retries):
@@ -41,6 +42,7 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max
         # Check if path planning succeeded
         if path is None or len(path) == 0:
             print(f"Attempt {attempt+1}/{max_retries}: Path planning failed for position {pos}")
+            quat = np.array(quat[2], quat[0], quat[1], quat[3])  # quat swap. Alternate ee angle on failed plans
             continue
         
         # Validate path before executing - check if final path qpos matches goal qpos
@@ -343,12 +345,13 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
             # Define target positions for each block
             target_positions = {
                 'b': np.array([0.4, -0.4, 0.0]),
-                'm': np.array([0.4, -0.2, 0.0]),
+                # 'm': np.array([0.4, -0.2, 0.0]),
+                'c': np.array([0.4, -0.2, 0.0]),
             }
             if block == 'b':
                 position = target_positions['b']
-            elif block == 'm':
-                position = target_positions['m']
+            elif block == 'c':
+                position = target_positions['c']
             else:
                 print(f"ERROR: Unknown block for placespecific: {block}")
                 continue
