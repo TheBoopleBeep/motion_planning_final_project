@@ -67,7 +67,8 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max
                 num_waypoints=waypoints,
                 planner=planner,
                 timeout=20.0,
-                attached_object=attached_object
+                attached_object=attached_object,
+                ignore_collisions=ignore_collisions
             )
             if path and len(path) > 0:
                 print(f" OMPL planning succeeded")
@@ -194,7 +195,8 @@ def move_while_open(franka, scene, pos, max_retries=10, tolerance=.011, waypoint
                 num_waypoints=waypoints,
                 planner=planner,
                 timeout=20.0,
-                attached_object=attached_object
+                attached_object=attached_object,
+                ignore_collisions=False
             )
             if path and len(path) > 0:
                 print(f"  ✓ OMPL planning succeeded: {len(path)} waypoints")

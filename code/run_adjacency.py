@@ -15,9 +15,9 @@ def PICK(block, blocks_state, franka, scene):
     #move above block
     move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.2]) + gripper_ee_offset)
     # #lower to block
-    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.07]) + gripper_ee_offset, tolerance=.008,attached_object=b)
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.07]) + gripper_ee_offset, tolerance=.008,attached_object=b,waypoints=70)
     # #move up - pass b as attached object
-    move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.3])+ gripper_ee_offset, attached_object=b, tolerance=.01)
+    move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.3])+ gripper_ee_offset, attached_object=b, tolerance=.01,waypoints=100)
 
 
 def PLACE(block, blocks_state, franka, scene):
@@ -26,13 +26,13 @@ def PLACE(block, blocks_state, franka, scene):
     bpos = np.asarray(b.get_pos(), dtype=np.float64)
 
     #move above block
-    move_while_closed(franka, scene, np.array([0.3, .3, 0.23]), attached_object=b)
+    move_while_closed(franka, scene, np.array([0.3, .3, 0.23]), attached_object=b, waypoints=70)
     # #lower next to block
-    move_while_closed(franka, scene, bpos + np.array([.3, 0.3, 0.06]), attached_object=b)
+    move_while_closed(franka, scene,  np.array([.3, 0.3, 0.18]), attached_object=b,waypoints=70)
     # #release
     open_gripper(franka, scene)
     # #move up
-    move_while_open(franka, scene, bpos + np.array([0.3, .3, 0.3]))
+    move_while_open(franka, scene, bpos + np.array([0.3, .3, 0.3]),waypoints=70)
 
 def PLACEEAST(block1, block2, blocks_state, franka, scene):
     b1 = blocks_state[block1]
@@ -42,13 +42,13 @@ def PLACEEAST(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and east of block2, aligned with y axis
-    move_while_closed(franka, scene, b2pos + np.array([0.8, 0, 0.23]), quat=np.array([0.7071, 0.7071, 0, 0]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([0, 0.043, 0.3]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1)
     # #lower next to block2
-    move_while_closed(franka, scene, b2pos + np.array([.8, 0, 0.03]), quat=np.array([0.7071, 0.7071, 0, 0]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([0, 0.043, 0.13]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1,ignore_collisions=True)
     # #release
     open_gripper(franka, scene)
     # #move up
-    move_while_open(franka, scene, b2pos + np.array([.8, 0, 0.3]))
+    move_while_open(franka, scene, b2pos + np.array([0, 0.05, 0.3]),attached_object=b1)
 
 def PLACEWEST(block1, block2, blocks_state, franka, scene):
     b1 = blocks_state[block1]
@@ -58,13 +58,13 @@ def PLACEWEST(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and west of block2, aligned with y axis
-    move_while_closed(franka, scene, b2pos + np.array([-0.8, 0, 0.23]), quat=np.array([0.7071, 0.7071, 0, 0]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([0, -0.043, 0.3]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1)
     # #lower next to block2
-    move_while_closed(franka, scene, b2pos + np.array([-.8, 0, 0.03]), quat=np.array([0.7071, 0.7071, 0, 0]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([0, -0.043, 0.13]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1,ignore_collisions=True)
     # #release
     open_gripper(franka, scene)
     # #move up
-    move_while_open(franka, scene, b2pos + np.array([-.8, 0, 0.3]))
+    move_while_open(franka, scene, b2pos + np.array([0, -.043, 0.3]))
 
 def PLACENORTH(block1, block2, blocks_state, franka, scene):
     b1 = blocks_state[block1]
@@ -74,13 +74,13 @@ def PLACENORTH(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and north of block2, aligned with x axis
-    move_while_closed(franka, scene, b2pos + np.array([0, 0.063, 0.23]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([0.043, 0, 0.3]), attached_object=b1)
     # #lower next to block2
-    move_while_closed(franka, scene, b2pos + np.array([0, 0.063, 0.03]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([0.043, 0, 0.13]), attached_object=b1,ignore_collisions=True)
     # #release
     open_gripper(franka, scene)
     # #move up
-    move_while_open(franka, scene, b2pos + np.array([0, 0.063, 0.3]))
+    move_while_open(franka, scene, b2pos + np.array([0.043, 0, 0.3]))
 
 def PLACESOUTH(block1, block2, blocks_state, franka, scene):
     b1 = blocks_state[block1]
@@ -90,13 +90,13 @@ def PLACESOUTH(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and south of block2, aligned with x axis
-    move_while_closed(franka, scene, b2pos + np.array([0, -0.063, 0.23]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([-0.043, 0, 0.3]), attached_object=b1)
     # #lower next to block2
-    move_while_closed(franka, scene, b2pos + np.array([0, -0.063, 0.03]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([-0.043, 0, 0.13]), attached_object=b1,ignore_collisions=True)
     # #release
     open_gripper(franka, scene)
     # #move up
-    move_while_open(franka, scene, b2pos + np.array([0, -0.063, 0.3]))
+    move_while_open(franka, scene, b2pos + np.array([-.043, 0, 0.3]), attached_object=b1)
 
 def PLACELONGDIAG(block1, block2, blocks_state, franka, scene):
     b1 = blocks_state[block1]
@@ -106,13 +106,13 @@ def PLACELONGDIAG(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and at long diagonal of block2
-    move_while_closed(franka, scene, b2pos + np.array([-0.12, -0.12, 0.23]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([0.088, 0.088, 0.23]), attached_object=b1,waypoints=200)
     # #lower next to block2
-    move_while_closed(franka, scene, b2pos + np.array([-0.12, -0.12, 0.2]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([0.088, 0.088, 0.13]), attached_object=b1,waypoints=100,ignore_collisions=True)
     # #release
     open_gripper(franka, scene)
     # #move up
-    move_while_open(franka, scene, b2pos + np.array([-0.12, -0.12, 0.3]),attached_object=b1)
+    move_while_open(franka, scene, b2pos + np.array([0.088, 0.088, 0.3]),attached_object=b1,waypoints=50)
 
 
 def execute_pddl_plan(plan_file, domain_file, problem_file, blocks_state, franka, scene):
@@ -236,7 +236,6 @@ def main():
         np.array([-87, -87, -87, -87, -12, -12, -12, -100, -100]),
         np.array([87, 87, 87, 87, 12, 12, 12, 100, 100]),
     )
-
     # Execute PDDL plan for adjacency problem
     execute_pddl_plan('adjacency_plan.json', 'adjacency_task.pddl', 'adjacency_problem.pddl', BlocksState, franka, scene)
 

@@ -56,12 +56,13 @@ class PlannerInterface:
             self,
             qpos_goal,
             qpos_start=None,
-            timeout=10.0,
+            timeout=5.0,
             smooth_path=True,
             num_waypoints=100,
             attached_object=None,
             planner="RRTConnect",
             goal_tolerance=0.0005,
+            ignore_collisions=False,
     ):
         """
         Plan a path from `qpos_start` to `qpos_goal`.
@@ -86,6 +87,8 @@ class PlannerInterface:
             The name of the motion planning algorithm to use. Supported planners: 'PRM', 'RRT', 'RRTConnect', 'RRTstar', 'EST', 'FMT', 'BITstar', 'ABITstar'. Defaults to 'RRTConnect'.
         goal_tolerance : float, optional
             The distance threshold for considering a state as reaching the goal. A value of 0.0 requires exact goal matching. Defaults to 0.0.
+        ignore_collisions : bool, optional
+            Whether to ignore collision checking during motion planning. Defaults to False.
 
         Returns
         -------
@@ -156,6 +159,7 @@ class PlannerInterface:
         ss = og.SimpleSetup(space)
 
         self.attached_object = attached_object
+        self.ignore_collisions = ignore_collisions
         
         ss.setStateValidityChecker(ob.StateValidityCheckerFn(self._is_ompl_state_valid))
         ss.setPlanner(getattr(og, planner)(ss.getSpaceInformation()))
@@ -215,6 +219,10 @@ class PlannerInterface:
         return waypoints
 
     def _is_ompl_state_valid(self, state):
+        # If ignoring collisions, always return True
+        if self.ignore_collisions:
+            return True
+            
         self.robot.set_qpos(self._ompl_state_to_tensor(state))
         collision_pairs = self.robot.detect_collision()
 
