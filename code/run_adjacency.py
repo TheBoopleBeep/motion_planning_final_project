@@ -1,8 +1,209 @@
 import sys
 import numpy as np
 import genesis as gs
-from scenes import create_scene_6blocks, create_scene_stacked
-from motion_action_primitives import execute_pddl_plan
+from scenes import create_scene_adjacency
+from pddl_planner import plan_task, save_plan_to_file, load_plan_from_file
+from motion_action_primitives import move_while_closed, move_while_open, close_gripper, open_gripper
+import os
+gripper_ee_offset = np.array([0.0027, 0.003, 0.04])
+
+def PICK(block, blocks_state, franka, scene):
+    b = blocks_state[block]
+    # Convert Genesis positions to proper numpy arrays
+    bpos = np.asarray(b.get_pos(), dtype=np.float64)
+    # offset forward because actual gripper is behind the end effector link
+    #move above block
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.2]) + gripper_ee_offset)
+    # #lower to block
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.07]) + gripper_ee_offset, tolerance=.008,attached_object=b)
+    # #move up - pass b as attached object
+    move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.3])+ gripper_ee_offset, attached_object=b, tolerance=.01)
+
+
+def PLACE(block, blocks_state, franka, scene):
+    b = blocks_state[block]
+    # Convert Genesis positions to proper numpy arrays
+    bpos = np.asarray(b.get_pos(), dtype=np.float64)
+
+    #move above block
+    move_while_closed(franka, scene, np.array([0.3, .3, 0.23]), attached_object=b)
+    # #lower next to block
+    move_while_closed(franka, scene, bpos + np.array([.3, 0.3, 0.06]), attached_object=b)
+    # #release
+    open_gripper(franka, scene)
+    # #move up
+    move_while_open(franka, scene, bpos + np.array([0.3, .3, 0.3]))
+
+def PLACEEAST(block1, block2, blocks_state, franka, scene):
+    b1 = blocks_state[block1]
+    b2 = blocks_state[block2]
+    # Convert Genesis positions to proper numpy arrays
+    b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
+    b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
+
+    #move above and east of block2, aligned with y axis
+    move_while_closed(franka, scene, b2pos + np.array([0.8, 0, 0.23]), quat=np.array([0.7071, 0.7071, 0, 0]), attached_object=b1)
+    # #lower next to block2
+    move_while_closed(franka, scene, b2pos + np.array([.8, 0, 0.03]), quat=np.array([0.7071, 0.7071, 0, 0]), attached_object=b1)
+    # #release
+    open_gripper(franka, scene)
+    # #move up
+    move_while_open(franka, scene, b2pos + np.array([.8, 0, 0.3]))
+
+def PLACEWEST(block1, block2, blocks_state, franka, scene):
+    b1 = blocks_state[block1]
+    b2 = blocks_state[block2]
+    # Convert Genesis positions to proper numpy arrays
+    b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
+    b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
+
+    #move above and west of block2, aligned with y axis
+    move_while_closed(franka, scene, b2pos + np.array([-0.8, 0, 0.23]), quat=np.array([0.7071, 0.7071, 0, 0]), attached_object=b1)
+    # #lower next to block2
+    move_while_closed(franka, scene, b2pos + np.array([-.8, 0, 0.03]), quat=np.array([0.7071, 0.7071, 0, 0]), attached_object=b1)
+    # #release
+    open_gripper(franka, scene)
+    # #move up
+    move_while_open(franka, scene, b2pos + np.array([-.8, 0, 0.3]))
+
+def PLACENORTH(block1, block2, blocks_state, franka, scene):
+    b1 = blocks_state[block1]
+    b2 = blocks_state[block2]
+    # Convert Genesis positions to proper numpy arrays
+    b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
+    b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
+
+    #move above and north of block2, aligned with x axis
+    move_while_closed(franka, scene, b2pos + np.array([0, 0.063, 0.23]), attached_object=b1)
+    # #lower next to block2
+    move_while_closed(franka, scene, b2pos + np.array([0, 0.063, 0.03]), attached_object=b1)
+    # #release
+    open_gripper(franka, scene)
+    # #move up
+    move_while_open(franka, scene, b2pos + np.array([0, 0.063, 0.3]))
+
+def PLACESOUTH(block1, block2, blocks_state, franka, scene):
+    b1 = blocks_state[block1]
+    b2 = blocks_state[block2]
+    # Convert Genesis positions to proper numpy arrays
+    b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
+    b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
+
+    #move above and south of block2, aligned with x axis
+    move_while_closed(franka, scene, b2pos + np.array([0, -0.063, 0.23]), attached_object=b1)
+    # #lower next to block2
+    move_while_closed(franka, scene, b2pos + np.array([0, -0.063, 0.03]), attached_object=b1)
+    # #release
+    open_gripper(franka, scene)
+    # #move up
+    move_while_open(franka, scene, b2pos + np.array([0, -0.063, 0.3]))
+
+def PLACELONGDIAG(block1, block2, blocks_state, franka, scene):
+    b1 = blocks_state[block1]
+    b2 = blocks_state[block2]
+    # Convert Genesis positions to proper numpy arrays
+    b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
+    b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
+
+    #move above and at long diagonal of block2
+    move_while_closed(franka, scene, b2pos + np.array([-0.12, -0.12, 0.23]), attached_object=b1)
+    # #lower next to block2
+    move_while_closed(franka, scene, b2pos + np.array([-0.12, -0.12, 0.2]), attached_object=b1)
+    # #release
+    open_gripper(franka, scene)
+    # #move up
+    move_while_open(franka, scene, b2pos + np.array([-0.12, -0.12, 0.3]),attached_object=b1)
+
+
+def execute_pddl_plan(plan_file, domain_file, problem_file, blocks_state, franka, scene):
+    """
+    Execute a PDDL plan by loading from file if it exists, or computing and saving it.
+    
+    Parameters:
+        plan_file: Path to the JSON file for the plan
+        domain_file: Path to the PDDL domain file (used if plan needs to be computed)
+        problem_file: Path to the PDDL problem file (used if plan needs to be computed)
+        blocks_state: Dictionary mapping block names to block entities
+        franka: Robot adapter
+        scene: Genesis scene
+    """
+    # Check if plan file exists
+    if os.path.exists(plan_file):
+        print(f"Loading precomputed plan from {plan_file}")
+        solution = load_plan_from_file(plan_file)
+    else:
+        print(f"Plan file not found. Computing plan and saving to {plan_file}")
+        solution = plan_task(domain_file, problem_file)
+        if solution:
+            save_plan_to_file(solution, plan_file)
+        else:
+            print("ERROR: No solution found!")
+            return False
+    
+    if not solution:
+        print("ERROR: No solution found!")
+        return False
+    
+    # Execute each action in the plan
+    for i, action in enumerate(solution, 1):
+        action_str = str(action)
+        
+        # Parse action string (format: "action_name block1 [block2]")
+        # Remove all parentheses and split by whitespace
+        parts = action_str.replace('(', '').replace(')', '').split()
+        action_name = parts[0].lower()
+        
+        if action_name == "pick":
+            # pick block
+            print("PICK %s" % parts[1])
+            block = parts[1]
+            PICK(block, blocks_state, franka, scene)
+            
+        elif action_name == "place":
+            # place block
+            print("PLACE %s" % parts[1])
+            block = parts[1]
+            PLACE(block, blocks_state, franka, scene)
+            
+        elif action_name == "placenorth":
+            # placeNorth block1 block2
+            print("PLACENORTH %s %s" % (parts[1], parts[2]))
+            block1 = parts[1]
+            block2 = parts[2]
+            PLACENORTH(block1, block2, blocks_state, franka, scene)
+            
+        elif action_name == "placeeast":
+            # placeEast block1 block2
+            print("PLACEEAST %s %s" % (parts[1], parts[2]))
+            block1 = parts[1]
+            block2 = parts[2]
+            PLACEEAST(block1, block2, blocks_state, franka, scene)
+            
+        elif action_name == "placesouth":
+            # placeSouth block1 block2
+            print("PLACESOUTH %s %s" % (parts[1], parts[2]))
+            block1 = parts[1]
+            block2 = parts[2]
+            PLACESOUTH(block1, block2, blocks_state, franka, scene)
+            
+        elif action_name == "placewest":
+            # placeWest block1 block2
+            print("PLACEWEST %s %s" % (parts[1], parts[2]))
+            block1 = parts[1]
+            block2 = parts[2]
+            PLACEWEST(block1, block2, blocks_state, franka, scene)
+            
+        elif action_name == "placelongdiag":
+            # placeLongDiag block1 block2
+            block1 = parts[1]
+            block2 = parts[2]
+            print("PLACELONGDIAG %s %s" % (block1, block2))
+            PLACELONGDIAG(block1, block2, blocks_state, franka, scene)
+            
+        else:
+            print(f"ERROR: Unknown action: {action_name}")
+    
+    return True
 
 
 def main():
@@ -17,7 +218,7 @@ def main():
         gs.init(backend=gs.cpu, logging_level='Warning', logger_verbose_time=False)
 
     # Build the scene using the factory
-    scene, franka, BlocksState = create_scene_6blocks()
+    scene, franka, BlocksState = create_scene_adjacency()
     #scene, franka, BlocksState = create_scene_stacked()
 
     # Set control gains
@@ -37,7 +238,7 @@ def main():
     )
 
     # Execute PDDL plan for adjacency problem
-    execute_pddl_plan('adjacency_task.pddl', 'adjacency_problem.pddl', BlocksState, franka, scene)
+    execute_pddl_plan('adjacency_plan.json', 'adjacency_task.pddl', 'adjacency_problem.pddl', BlocksState, franka, scene)
 
 
 if __name__ == "__main__":
