@@ -1,0 +1,14 @@
+[
+  "(pick b1)\n  PRE: (handempty)\n  ADD: (holding b1)\n  DEL: (handempty)\n",
+  "(place b1)\n  PRE: (holding b1)\n  ADD: (handempty)\n  ADD: (placed b1)\n  DEL: (holding b1)\n",
+  "(pick b4)\n  PRE: (handempty)\n  ADD: (holding b4)\n  DEL: (handempty)\n",
+  "(placelongdiag b4 b1)\n  PRE: (placed b1)\n  PRE: (holding b4)\n  ADD: (handempty)\n  ADD: (placed b4)\n  ADD: (longdiag b4 b1)\n  DEL: (holding b4)\n",
+  "(pick b3)\n  PRE: (handempty)\n  ADD: (holding b3)\n  DEL: (handempty)\n",
+  "(placeeast b3 b1)\n  PRE: (placed b1)\n  PRE: (holding b3)\n  ADD: (placed b3)\n  ADD: (handempty)\n  ADD: (eneighbor b3 b1)\n  DEL: (holding b3)\n",
+  "(pick b6)\n  PRE: (handempty)\n  ADD: (holding b6)\n  DEL: (handempty)\n",
+  "(placesouth b6 b4)\n  PRE: (holding b6)\n  PRE: (placed b4)\n  ADD: (sneighbor b6 b4)\n  ADD: (handempty)\n  ADD: (placed b6)\n  DEL: (holding b6)\n",
+  "(pick b2)\n  PRE: (handempty)\n  ADD: (holding b2)\n  DEL: (handempty)\n",
+  "(placenorth b2 b1)\n  PRE: (holding b2)\n  PRE: (placed b1)\n  ADD: (handempty)\n  ADD: (nneighbor b2 b1)\n  ADD: (placed b2)\n  DEL: (holding b2)\n",
+  "(pick b5)\n  PRE: (handempty)\n  ADD: (holding b5)\n  DEL: (handempty)\n",
+  "(placewest b5 b4)\n  PRE: (placed b4)\n  PRE: (holding b5)\n  ADD: (placed b5)\n  ADD: (handempty)\n  ADD: (wneighbor b5 b4)\n  DEL: (holding b5)\n"
+]

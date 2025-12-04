@@ -1,8 +1,120 @@
 import sys
 import numpy as np
 import genesis as gs
+import os
 from scenes import create_scene_6blocks, create_scene_stacked
-from motion_action_primitives import execute_pddl_plan
+from pddl_planner import plan_task, load_plan_from_file, save_plan_to_file
+from motion_action_primitives import move_while_closed, move_while_open, close_gripper, open_gripper
+
+gripper_ee_offset = np.array([0.003, 0.005, 0.04])
+
+def STACK(block1, block2, blocks_state, franka, scene):
+    b1 = blocks_state[block1]
+    b2 = blocks_state[block2]
+    # Convert Genesis positions to proper numpy arrays
+    b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
+    b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
+
+    #move above block2
+    move_while_closed(franka, scene, b2pos + np.array([0, 0, 0.23]) )
+    # #lower to block2
+    move_while_closed(franka, scene, b2pos + np.array([0, 0, 0.17]) , waypoints=50)
+    #relative movement to account for minor inaccuracies
+    b1 = blocks_state[block1]
+    b2 = blocks_state[block2]
+    b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
+    b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
+    diff = b2pos - b1pos
+    print("Diff:",diff)
+    current_ee_pos = franka.get_ee_pos()
+    des_pos = current_ee_pos + np.array([diff[0], diff[1], 0])
+    move_while_closed(franka, scene, b2pos + np.array([des_pos[0], des_pos[1], 0.17]) , waypoints=80, tolerance=.005)
+    # #release
+    open_gripper(franka, scene)
+    # #move up
+    move_while_open(franka, scene, b2pos + np.array([0, 0, 0.3]))
+    
+def PICK(block, blocks_state, franka, scene):
+    b = blocks_state[block]
+    # Convert Genesis positions to proper numpy arrays
+    bpos = np.asarray(b.get_pos(), dtype=np.float64)
+    # offset forward because actual gripper is behind the end effector link
+    #move above block
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.18]) + gripper_ee_offset)
+    # #lower to block
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.07]) + gripper_ee_offset,waypoints=50)
+    #call again because genesis is ass
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.07]) + gripper_ee_offset,waypoints=30, tolerance=.005)
+    # #grasp
+    #close_gripper(franka, scene)
+    # #move up
+    move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.3])+ gripper_ee_offset)
+
+
+def execute_pddl_plan(plan_file, domain_file, problem_file, blocks_state, franka, scene):
+    """
+    Execute a PDDL plan by loading from file if it exists, or computing and saving it.
+    
+    Parameters:
+        plan_file: Path to the JSON file for the plan
+        domain_file: Path to the PDDL domain file (used if plan needs to be computed)
+        problem_file: Path to the PDDL problem file (used if plan needs to be computed)
+        blocks_state: Dictionary mapping block names to block entities
+        franka: Robot adapter
+        scene: Genesis scene
+    """
+    # Check if plan file exists
+    if os.path.exists(plan_file):
+        print(f"Loading precomputed plan from {plan_file}")
+        solution = load_plan_from_file(plan_file)
+    else:
+        print(f"Plan file not found. Computing plan and saving to {plan_file}")
+        solution = plan_task(domain_file, problem_file)
+        if solution:
+            save_plan_to_file(solution, plan_file)
+        else:
+            print("ERROR: No solution found!")
+            return False
+    
+    if not solution:
+        print("ERROR: No solution found!")
+        return False
+    
+    # Execute each action in the plan
+    for i, action in enumerate(solution, 1):
+        action_str = str(action)
+        
+        # Parse action string (format: "action_name block1 [block2]")
+        # Remove all parentheses and split by whitespace
+        parts = action_str.replace('(', '').replace(')', '').split()
+        action_name = parts[0]
+        
+        if action_name == "pick":
+            # pick block
+            block = parts[1]
+            PICK(block, blocks_state, franka, scene)
+            
+        elif action_name == "stack":
+            # stack block1 block2
+            block1 = parts[1]
+            block2 = parts[2]
+            STACK(block1, block2, blocks_state, franka, scene)
+            
+        elif action_name == "unstack":
+            # unstack block1 block2 (pick block1 from block2)
+            block1 = parts[1]
+            block2 = parts[2]
+            PICK(block1, blocks_state, franka, scene)
+            
+        elif action_name == "place":
+            # place block (not used in typical tower building)
+            block = parts[1]
+            print(f"WARNING: Place action not fully implemented for block {block}")
+            
+        else:
+            print(f"ERROR: Unknown action: {action_name}")
+    
+    return True
 
 
 def main():
@@ -36,8 +148,8 @@ def main():
         np.array([87, 87, 87, 87, 12, 12, 12, 100, 100]),
     )
 
-    # Execute PDDL plan
-    execute_pddl_plan('6_block_domain.pddl', '6_block_problem.pddl', BlocksState, franka, scene)
+    # Execute PDDL plan (compute if needed, otherwise load from file)
+    execute_pddl_plan('6_block_plan.json', '6_block_domain.pddl', '6_block_problem.pddl', BlocksState, franka, scene)
 
 
 if __name__ == "__main__":
