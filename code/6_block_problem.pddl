@@ -10,7 +10,7 @@
     (clear c) (clear m) (clear y)
     (handempty)
   )
-  
+
   (:goal (and
     (on g r)
     (on b g)

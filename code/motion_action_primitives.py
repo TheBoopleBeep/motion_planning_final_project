@@ -1,9 +1,11 @@
 import sys
 import warnings
 import numpy as np
+import math
 import genesis as gs
 from scenes import create_scene_6blocks, create_scene_stacked
 from pddl_planner import plan_task
+from scipy.spatial.transform import Rotation as R
 
 
 def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max_retries=30):
@@ -42,7 +44,7 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max
         # Check if path planning succeeded
         if path is None or len(path) == 0:
             print(f"Attempt {attempt+1}/{max_retries}: Path planning failed for position {pos}")
-            quat = np.array(quat[2], quat[0], quat[1], quat[3])  # quat swap. Alternate ee angle on failed plans
+            # quat = np.array(quat[2], quat[0], quat[1], quat[3])  # quat swap. Alternate ee angle on failed plans
             continue
         
         # Validate path before executing - check if final path qpos matches goal qpos
@@ -289,6 +291,20 @@ def PLACE_SPECIFIC(block, position, blocks_state, franka, scene):
     # #move up
     move_while_open(franka, scene, position + np.array([0, 0, 0.3]))
 
+def PLACE_SPECIFIC_ORIENTED(block, position, quat, blocks_state, franka, scene):
+    b = blocks_state[block]
+    # Convert Genesis positions to proper numpy arrays
+    # bpos = np.asarray(b.get_pos(), dtype=np.float64)
+
+    #move above target position
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.23]), quat)
+    # #lower to target position
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.17]), quat)
+    # #release
+    open_gripper(franka, scene)
+    # #move up
+    move_while_open(franka, scene, position + np.array([0, 0, 0.3]))
+
 
 def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
     """
@@ -344,9 +360,10 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
             block = parts[1]
             # Define target positions for each block
             target_positions = {
-                'b': np.array([0.4, -0.4, 0.0]),
-                # 'm': np.array([0.4, -0.2, 0.0]),
-                'c': np.array([0.4, -0.2, 0.0]),
+                # for Two Tower Task
+                'b': np.array([0.4, -0.50, 0.0]),
+                'c': np.array([0.6, -0.25, 0.0]),
+
             }
             if block == 'b':
                 position = target_positions['b']
@@ -356,7 +373,88 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
                 print(f"ERROR: Unknown block for placespecific: {block}")
                 continue
             PLACE_SPECIFIC(block, position, blocks_state, franka, scene)
+        
+        elif action_name == "placespecificoriented":
+            # place block at a specific position with a specific quaternion orientation
+            # Perhaps it's a little excessive to write all of this out. I can speed this up later.
+            block = parts[1]
+            # Define target positions for each block
+
+            # Radius of circle connecting block centers in special tower task
+            r = ((0.02/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
+            theta_r = 0*(math.pi/180)
+            theta_b = 72*(math.pi/180)+math.pi
+            theta_y = 144*(math.pi/180)+math.pi
+            theta_g = 216*(math.pi/180)+math.pi
+            theta_o = 288*(math.pi/180)+math.pi
+
             
+
+
+
+            target_positions = {
+                # For Special Tower Task
+                'r1': np.array([0.5+r*math.cos(theta_r), -0.5+r*math.sin(theta_r), 0.0]),
+                'g1': np.array([0.5+r*math.cos(theta_g), -0.5+r*math.sin(theta_g), 0.0]),
+                'b1': np.array([0.5+r*math.cos(theta_b), -0.5+r*math.sin(theta_b), 0.0]),
+                'o1': np.array([0.5+r*math.cos(theta_o), -0.5+r*math.sin(theta_o), 0.0]),
+                'y1': np.array([0.5+r*math.cos(theta_y), -0.5+r*math.sin(theta_y), 0.0]),
+                'r2': np.array([0.4, -0.2, 0.0]), # Not made yet, will just require a angle change and height change
+                'g2': np.array([0.4, -0.2, 0.0]),
+                'b2': np.array([0.4, -0.2, 0.0]),
+                'o2': np.array([0.4, -0.2, 0.0]),
+                'y2': np.array([0.4, -0.2, 0.0]),
+
+            }
+            target_orientations = {
+                # [w, x, y, z] unit quaternions
+                'r1': np.array(R.from_euler('xz', [math.pi,theta_r]).as_quat(scalar_first=True)),
+                'g1': np.array(R.from_euler('xz', [math.pi,theta_g]).as_quat(scalar_first=True)),
+                'b1': np.array(R.from_euler('xz', [math.pi,theta_b]).as_quat(scalar_first=True)),
+                'o1': np.array(R.from_euler('xz', [math.pi,theta_o]).as_quat(scalar_first=True)),
+                'y1': np.array(R.from_euler('xz', [math.pi,theta_y]).as_quat(scalar_first=True)),
+                'r2': np.array([0.0, 0.0, 0.0, 1.0]),
+                'g2': np.array([0.0, 0.0, 0.0, 1.0]),
+                'b2': np.array([0.0, 0.0, 0.0, 1.0]),
+                'o2': np.array([0.0, 0.0, 0.0, 1.0]),
+                'y2': np.array([0.0, 0.0, 0.0, 1.0]),
+            }
+
+            if block == 'r1':
+                position = target_positions['r1']
+                quat = target_orientations['r1']
+            elif block == 'r2':
+                position = target_positions['r2']
+                quat = target_orientations['r2']
+            elif block == 'g1':
+                position = target_positions['g1']
+                quat = target_orientations['g1']
+            elif block == 'g2':
+                position = target_positions['g2']
+                quat = target_orientations['g2']
+            elif block == 'b1':
+                position = target_positions['b1']
+                quat = target_orientations['b1']
+            elif block == 'b2':
+                position = target_positions['b2']
+                quat = target_orientations['b2']
+            elif block == 'o1':
+                position = target_positions['o1']
+                quat = target_orientations['o1']
+            elif block == 'o2':
+                position = target_positions['o2']
+                quat = target_orientations['o2']
+            elif block == 'y1':
+                position = target_positions['y1']
+                quat = target_orientations['y1']
+            elif block == 'y2':
+                position = target_positions['y2']
+                quat = target_orientations['y2']
+            else:
+                print(f"ERROR: Unknown block for placespecific: {block}")
+                continue
+            PLACE_SPECIFIC_ORIENTED(block, position, quat, blocks_state, franka, scene)
+        
         else:
             print(f"ERROR: Unknown action: {action_name}")
     
