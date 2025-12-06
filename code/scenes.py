@@ -228,3 +228,56 @@ def create_scene_stacked() -> Tuple[Any, Any, Dict[str, Any], Any]:
     blocks_state: Dict[str, Any] = {"r": cubeR, "g": cubeG, "b": cubeB, "y": cubeY, "m": cubeM, "c": cubeC}
 
     return scene, franka, blocks_state
+
+def create_scene_adjacency() -> Tuple[Any, Any, Dict[str, Any], Any]:
+    """Create an alternative demo scene (layout 2) with cube positions. one on top of the other."""
+    scene = _build_base_scene(camera_pos=(2.5, -1.2, 1.2), camera_lookat=(0.6, 0.0, 0.2))
+
+    plane = scene.add_entity(gs.morphs.Plane())
+
+    # slightly different positions
+    pos1 = np.array([.3,  0 , 0.02])
+    pos2 = np.array([.45, .0, 0.02])
+    pos3 = np.array([.6, .0 , 0.02])
+    pos4 = np.array([.3, -.2 , 0.02])
+    pos5 = np.array([.45, -.2 , 0.02])
+    pos6 = np.array([.6, -.2 , 0.02])
+    cube1 = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos1),
+        surface=gs.options.surfaces.Plastic(color=(1.0, 0.0, 0.0)),
+    )
+    cube2 = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos2),
+        surface=gs.options.surfaces.Plastic(color=(0.0, 1.0, 0.0)),
+    )
+    cube3 = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos3),
+        surface=gs.options.surfaces.Plastic(color=(0.0, 0.0, 1.0)),
+    )
+
+    cube4 = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos4),
+        surface=gs.options.surfaces.Plastic(color=(1.0, 0, 1.0)),
+    )
+
+    cube5 = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos5),
+        surface=gs.options.surfaces.Plastic(color=(1.0, 0, 1.0)),
+    )
+
+    cube6 = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos6),
+        surface=gs.options.surfaces.Plastic(color=(0, 1.0, 1.0)),
+    )
+
+    franka_raw = scene.add_entity(gs.morphs.MJCF(file="xml/franka_emika_panda/panda.xml"))
+    franka = RobotAdapter(franka_raw, scene)
+    scene.build()
+
+    franka.set_qpos(np.array([0.0, -0.5, -0.2, -1.0, 0.0, 1.00, 0.5, 0.02, 0.02]))
+
+    _elevate_robot_base(franka)
+
+    blocks_state: Dict[str, Any] = {"b1": cube1, "b2": cube2, "b3": cube3, "b4": cube4, "b5": cube5, "b6": cube6}
+
+    return scene, franka, blocks_state

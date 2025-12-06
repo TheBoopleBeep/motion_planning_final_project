@@ -61,6 +61,8 @@ class PlannerInterface:
             num_waypoints=100,
             attached_object=None,
             planner="RRTConnect",
+            goal_tolerance=0.0005,
+            ignore_collisions=False,
     ):
         """
         Plan a path from `qpos_start` to `qpos_goal`.
@@ -83,6 +85,10 @@ class PlannerInterface:
             Whether to ignore joint limits during motion planning. Defaults to False.
         planner : str, optional
             The name of the motion planning algorithm to use. Supported planners: 'PRM', 'RRT', 'RRTConnect', 'RRTstar', 'EST', 'FMT', 'BITstar', 'ABITstar'. Defaults to 'RRTConnect'.
+        goal_tolerance : float, optional
+            The distance threshold for considering a state as reaching the goal. A value of 0.0 requires exact goal matching. Defaults to 0.0.
+        ignore_collisions : bool, optional
+            Whether to ignore collision checking during motion planning. Defaults to False.
 
         Returns
         -------
@@ -136,6 +142,10 @@ class PlannerInterface:
         # ensure we use numpy float64 for bounds
         q_limit_lower = np.asarray(self.robot.q_limit[0], dtype=float)
         q_limit_upper = np.asarray(self.robot.q_limit[1], dtype=float)
+        
+        # Clamp qpos values to stay within bounds (handles floating-point precision issues)
+        qpos_start = np.clip(qpos_start, q_limit_lower, q_limit_upper)
+        qpos_goal = np.clip(qpos_goal, q_limit_lower, q_limit_upper)
 
         ######### setup OMPL ##########
         space = ob.RealVectorStateSpace(self.robot.n_qs)
@@ -149,6 +159,7 @@ class PlannerInterface:
         ss = og.SimpleSetup(space)
 
         self.attached_object = attached_object
+        self.ignore_collisions = ignore_collisions
         
         ss.setStateValidityChecker(ob.StateValidityCheckerFn(self._is_ompl_state_valid))
         ss.setPlanner(getattr(og, planner)(ss.getSpaceInformation()))
@@ -181,7 +192,10 @@ class PlannerInterface:
             self.diagnose_valid_violation(state_goal)
 
         # set start/goal in OMPL
-        ss.setStartAndGoalStates(state_start, state_goal)
+        if goal_tolerance > 0.0:
+            ss.setStartAndGoalStates(state_start, state_goal, goal_tolerance)
+        else:
+            ss.setStartAndGoalStates(state_start, state_goal)
         ss.setup()
 
         ######### solve ##########
@@ -205,6 +219,10 @@ class PlannerInterface:
         return waypoints
 
     def _is_ompl_state_valid(self, state):
+        # If ignoring collisions, always return True
+        if self.ignore_collisions:
+            return True
+            
         self.robot.set_qpos(self._ompl_state_to_tensor(state))
         collision_pairs = self.robot.detect_collision()
 

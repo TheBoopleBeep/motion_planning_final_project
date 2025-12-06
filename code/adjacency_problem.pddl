@@ -1,5 +1,5 @@
-(define (problem adjacent-blocks)
-  (:domain adjacent-blocks-world)
+(define (problem adjacent-blocks-noclear)
+  (:domain adjacent-blocks-world-noclear)
   
   (:objects b1 b2 b3 b4 b5 b6 - block)
   
