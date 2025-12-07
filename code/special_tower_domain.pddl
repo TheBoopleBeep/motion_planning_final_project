@@ -11,6 +11,7 @@
     (handempty) ; robot hand is empty
     (inplace ?x - block) ; block x is in the right place
     (oriented ?x - block) ; block x is in the right place and oriented
+    (relative ?x - block ?y - block) ; block x is placed relative to block y in special tower formation (clockwise)
   )
   
   (:action pick
@@ -46,7 +47,13 @@
   (:action placespecificoriented
     :parameters (?x - block)
     :precondition (holding ?x)
-    :effect (and (clear ?x) (oriented ?x) (handempty) (not (holding ?x)))  ; x is clear, oriented right in the correct position and not held
+    :effect (and (clear ?x) (oriented ?x) (inplace ?x) (handempty) (not (holding ?x)))  ; x is clear, oriented right in the correct position and not held
+  )
+
+  (:action place_relative_oriented
+    :parameters (?x - block ?y - block)
+    :precondition (and (holding ?x ) (inplace ?y))
+    :effect (and (clear ?x) (relative ?x ?y) (inplace ?x) (handempty) (not (holding ?x)))  ; x is placed relative to y, is clear, in the correct position, and not held
   )
 
 )

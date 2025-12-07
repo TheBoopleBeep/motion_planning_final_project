@@ -115,14 +115,14 @@ def create_scene_10blocks() -> Tuple[Any, Any, Dict[str, Any], Any]:
 
     posR1 = _rand_xy((0.65, 0.0, 0.02))
     posG1 = _rand_xy((0.65, 0.2, 0.02))
-    posB1 = _rand_xy((0.65, 0.4, 0.02))
+    posB1 = _rand_xy((0.65, -0.2, 0.02))
     posY1 = _rand_xy((0.45, 0.0, 0.02))
-    posO1 = _rand_xy((0.45, 0.4, 0.02))
+    posO1 = _rand_xy((0.45, -0.2, 0.02))
     posR2 = _rand_xy((0.85, 0.0, 0.02))
     posG2 = _rand_xy((0.85, 0.2, 0.02))
-    posB2 = _rand_xy((0.85, 0.4, 0.02))
+    posB2 = _rand_xy((0.85, -0.2, 0.02))
     posY2 = _rand_xy((0.25, 0.0, 0.02))
-    posO2 = _rand_xy((0.25, 0.4, 0.02))
+    posO2 = _rand_xy((0.25, -0.2, 0.02))
 
     cubeR1 = scene.add_entity(
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos= posR1),

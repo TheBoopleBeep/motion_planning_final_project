@@ -105,21 +105,21 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max
             current_arm_pos = franka.get_qpos()[:-2]
             for _ in range(5):
                 franka.control_dofs_position(current_arm_pos, motors_dof)
-                franka.control_dofs_force(np.array([-2.0, -2.0]), fingers_dof)
+                franka.control_dofs_force(np.array([-3.0, -3.0]), fingers_dof)
                 scene.step()
             
             for i, waypoint in enumerate(path):
                 # Control arm with position from waypoint
                 franka.control_dofs_position(waypoint[:-2], motors_dof)
                 # Apply strong closing force to maintain grip
-                franka.control_dofs_force(np.array([-2.0, -2.0]), fingers_dof)
+                franka.control_dofs_force(np.array([-3.0, -3.0]), fingers_dof)
                 scene.step()
             
             # Hold position until arm reaches desired pose
             final_arm_pos = path[-1][:-2]
             step_count = 0
             while True:
-                franka.control_dofs_force(np.array([-2.0, -2.0]), fingers_dof)
+                franka.control_dofs_force(np.array([-3.0, -3.0]), fingers_dof)
                 scene.step()
                 
                 actual_final_pos = end_effector.get_pos()
@@ -218,8 +218,6 @@ def move_while_open(franka, scene, pos, max_retries=10, tolerance=.011, waypoint
             print(f"Attempt {attempt+1}/{max_retries}: Path planning failed for position {original_pos}")
             continue
         
-        
-        
         # Validate path before executing - check if final path qpos matches goal qpos
         # Attempts to fix weird bug where the arm moves back to the home position
         final_qpos = path[-1]
@@ -258,11 +256,11 @@ def move_while_open(franka, scene, pos, max_retries=10, tolerance=.011, waypoint
                 print(f"Position error {final_dist:.6f}m exceeds 0.001m threshold, replanning...")
                 # Continue to next attempt to replan
                 continue
-            
+
             # Success!
             print(f"Successfully reached target within 0.001m tolerance")
             return
-            
+    
         except ValueError as e:
             # Path was bad, continue to next retry attempt
             print(f"Attempt {attempt+1}/{max_retries} failed: {e}")
@@ -319,19 +317,49 @@ def STACK(block1, block2, blocks_state, franka, scene):
     # #move up
     move_while_open(franka, scene, b2pos + np.array([0, 0, 0.3]))
     
+# def PICK(block, blocks_state, franka, scene):
+#     b = blocks_state[block]
+#     # Convert Genesis positions to proper numpy arrays
+#     bpos = np.asarray(b.get_pos(), dtype=np.float64)
+
+#     #move above block
+#     move_while_open(franka, scene, bpos + np.array([0, 0, 0.18]))
+#     # #lower to block
+#     move_while_open(franka, scene, bpos + np.array([0, 0, 0.1]))
+#     # #grasp
+#     close_gripper(franka, scene)
+#     # #move up
+#     move_while_closed(franka, scene, bpos + np.array([0, 0, 0.3]))
+
 def PICK(block, blocks_state, franka, scene):
+    gripper_ee_offset = np.array([0.0027, 0.003, 0.04])
+
+    b = blocks_state[block]
+    # Convert Genesis positions to proper numpy arrays
+    bpos = np.asarray(b.get_pos(), dtype=np.float64)
+    # offset forward because actual gripper is behind the end effector link
+    #move above block
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.2]) + gripper_ee_offset)
+    # #lower to block
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.07]) + gripper_ee_offset, tolerance=.008,attached_object=b,waypoints=70)
+    # #move up - pass b as attached object
+    move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.3])+ gripper_ee_offset, attached_object=b, tolerance=.01,waypoints=100)
+
+
+def PLACE(block, blocks_state, franka, scene):
     b = blocks_state[block]
     # Convert Genesis positions to proper numpy arrays
     bpos = np.asarray(b.get_pos(), dtype=np.float64)
 
     #move above block
-    move_while_open(franka, scene, bpos + np.array([0, 0, 0.18]))
-    # #lower to block
-    move_while_open(franka, scene, bpos + np.array([0, 0, 0.1]))
-    # #grasp
-    close_gripper(franka, scene)
+    move_while_closed(franka, scene, np.array([0.3, 0.3, 0.23]), attached_object=b, waypoints=70)
+    # #lower next to block
+    move_while_closed(franka, scene,  np.array([0.3, 0.3, 0.18]), attached_object=b,waypoints=70)
+    # #release
+    open_gripper(franka, scene)
     # #move up
-    move_while_closed(franka, scene, bpos + np.array([0, 0, 0.3]))
+    move_while_open(franka, scene, bpos + np.array([0.3, .3, 0.3]),waypoints=70)
+
 
 def PLACEEAST(block1, block2, blocks_state, franka, scene):
     b1 = blocks_state[block1]
@@ -403,9 +431,9 @@ def PLACE_SPECIFIC(block, position, blocks_state, franka, scene):
     # bpos = np.asarray(b.get_pos(), dtype=np.float64)
 
     #move above target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.23]))
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.30]), attached_object=b, waypoints=70)
     # #lower to target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.17]))
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.14]), attached_object=b, waypoints=70)
     # #release
     open_gripper(franka, scene)
     # #move up
@@ -417,9 +445,9 @@ def PLACE_SPECIFIC_ORIENTED(block, position, quat, blocks_state, franka, scene):
     # bpos = np.asarray(b.get_pos(), dtype=np.float64)
 
     #move above target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.23]), quat)
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.30]), quat, attached_object=b, waypoints=70)
     # #lower to target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.17]), quat)
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.14]), quat, attached_object=b, waypoints=70)
     # #release
     open_gripper(franka, scene)
     # #move up
@@ -501,16 +529,19 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
             # Define target positions for each block
 
             # Radius of circle connecting block centers in special tower task
-            r = ((0.02/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
+            r = ((0.025/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
             theta_r = 0*(math.pi/180)
             theta_b = 72*(math.pi/180)+math.pi
             theta_y = 144*(math.pi/180)+math.pi
             theta_g = 216*(math.pi/180)+math.pi
             theta_o = 288*(math.pi/180)+math.pi
-
-            
-
-
+            block_state = blocks_state[block]
+            print("block:", block)
+            ref_block = parts[2]
+            block_pos = np.asarray(block_state.get_pos(), dtype=np.float64)
+            block_quat = np.asarray(block_state.get_quat(), dtype=np.float64)
+            print("block_orient:", block_quat)
+            print("block_state:", block_state)
 
             target_positions = {
                 # For Special Tower Task
@@ -524,7 +555,6 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
                 'b2': np.array([0.4, -0.2, 0.0]),
                 'o2': np.array([0.4, -0.2, 0.0]),
                 'y2': np.array([0.4, -0.2, 0.0]),
-
             }
             target_orientations = {
                 # [w, x, y, z] unit quaternions
@@ -574,6 +604,33 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
                 print(f"ERROR: Unknown block for placespecific: {block}")
                 continue
             PLACE_SPECIFIC_ORIENTED(block, position, quat, blocks_state, franka, scene)
+
+        elif action_name == "place_relative_oriented":
+            block = parts[1]
+
+            block_state = blocks_state[block]
+            # print("block:", block)
+            ref_block = parts[2]
+            block_pos = np.asarray(block_state.get_pos(), dtype=np.float64)
+            block_quat = np.asarray(block_state.get_quat(), dtype=np.float64)
+            # print("block_orient:", block_quat)
+            # print("block_state:", block_state)
+
+            # 0.02m is the half-width of a block, add more to create extra space
+            r = ((0.02/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
+            theta_dif = 72*(math.pi/180)  # 72 degrees in radians
+
+            target_position = np.array([block_pos[0]+r*math.cos(theta_dif), block_pos[1]+r*math.sin(theta_dif), block_pos[2]]),
+            target_quat = np.array(R.from_euler('xz', [math.pi,theta_dif]).as_quat(scalar_first=True))
+            
+            # quaternion multiplication to combine orientations
+            target_quat[0] = block_quat[0] * target_quat[0] - block_quat[1] * target_quat[1] - block_quat[2] * target_quat[2] - block_quat[3] * target_quat[3]
+            target_quat[1] = block_quat[0] * target_quat[1] + block_quat[1] * target_quat[0] + block_quat[2] * target_quat[3] - block_quat[3] * target_quat[2]
+            target_quat[2] = block_quat[0] * target_quat[2] - block_quat[1] * target_quat[3] + block_quat[2] * target_quat[0] + block_quat[3] * target_quat[1]
+            target_quat[3] = block_quat[0] * target_quat[3] + block_quat[1] * target_quat[2] - block_quat[2] * target_quat[1] + block_quat[3] * target_quat[0]
+
+            PLACE_SPECIFIC_ORIENTED(block, target_position, target_quat, blocks_state, franka, scene)
+
         
         else:
             print(f"ERROR: Unknown action: {action_name}")
