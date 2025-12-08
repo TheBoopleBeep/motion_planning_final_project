@@ -7,10 +7,12 @@ from planning import PlannerInterface
 from scenes import create_scene_6blocks, create_scene_stacked
 from pddl_planner import plan_task
 from scipy.spatial.transform import Rotation as R
+from time import sleep
 
 
 
-def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max_retries=30, tolerance=.01, waypoints=200, planner='BITstar', attached_object=None):
+def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max_retries=30, tolerance=.001, waypoints=200, planner='BITstar', attached_object=None):
+    print("running move_while_closed()")
     motors_dof = np.arange(7)
     fingers_dof = np.arange(7, 9)
     
@@ -41,6 +43,10 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max
         else:
             pos_with_variance = original_pos
         
+        # print("link: ",end_effector)
+        # print("pos: ",pos_with_variance)
+        # print("quat: ", quat)
+
         qpos = franka.inverse_kinematics(
             link=end_effector,
             pos=pos_with_variance,
@@ -138,6 +144,8 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max
             if final_dist > tolerance:
                 print(f"Position error {final_dist:.6f}m exceeds %f threshold, replanning...", tolerance)
                 # Continue to next attempt to replan
+                print("Attempting Control")
+                control_to_pos(franka, scene, pos, quat, ignore_collisions, max_retries, tolerance)
                 continue
             
             # Success!
@@ -244,7 +252,7 @@ def move_while_open(franka, scene, pos, max_retries=10, tolerance=.011, waypoint
                 step_count += 1
                 if step_count % 10 == 0:
                     print(f"move_while_open convergence: step {step_count}, distance={final_dist:.6f}")
-                if final_dist <= tolerance or step_count >= 110:
+                if final_dist <= tolerance or step_count >= 50:
                     break
             
             # Check if final position is within 0.001m of desired position
@@ -284,7 +292,7 @@ def close_gripper(franka, scene):
     for i in range(max_steps):
         # Keep arm steady, apply strong closing force to fingers
         franka.control_dofs_position(arm_qpos, motors_dof)
-        franka.control_dofs_force(np.array([-2.0, -2.0]), fingers_dof)
+        franka.control_dofs_force(np.array([-3.0, -3.0]), fingers_dof)
         scene.step()
 
 def open_gripper(franka, scene):
@@ -299,6 +307,219 @@ def open_gripper(franka, scene):
         # Control all DOFs together with position control
         franka.control_dofs_position(qpos)
         scene.step()
+
+def control_to_pos(franka, scene, pos, quat=None, ignore_collisions=True, max_retries=30, tolerance=.01, waypoints=200, planner='BITstar', attached_object=None):
+    print("Running control_to_pos()")
+    motors_dof = np.arange(7)
+    fingers_dof = np.arange(7, 9)
+    
+    # get the end-effector link
+    end_effector = franka.get_link("hand")
+    
+    # Create OMPL planner interface
+    planner_interface = PlannerInterface(franka, scene)
+    
+    # Get current gripper position to maintain during movement
+    current_gripper_pos = franka.get_qpos()[-2:]
+    
+    # Default quaternion if not provided
+    if quat is None:
+        quat = np.array([0, 1, 0, 0])
+
+    
+    # Store original position for variance
+    original_pos = np.array(pos, dtype=np.float64)
+    
+    # Retry loop for IK and path planning
+    for attempt in range(max_retries):
+
+        # # Add small random variance (< 1mm) to position when replanning (after first attempt)
+        # if attempt > 0:
+        #     variance = np.random.uniform(-0.001, 0.001, size=3)  # +/- 1mm
+        #     pos_with_variance = original_pos + variance
+        #     print(f"  Adding variance: {variance * 1000} mm")
+
+        # else:
+        #     pos_with_variance = original_pos
+        
+        # print("link: ",end_effector)
+        # print("pos: ",pos_with_variance)
+        # print("quat: ", quat)
+
+        final_qpos = franka.inverse_kinematics(
+            link=end_effector,
+            pos=pos,
+            quat=quat,
+        )
+        
+        # Check if IK succeeded
+        if final_qpos is None:
+            print(f"Attempt {attempt+1}/{max_retries}: IK failed for position {original_pos}")
+            continue
+        else:
+            exit
+        
+    # Set gripper to current closed position
+    final_qpos[-2:] = current_gripper_pos
+
+    # Debug: print current and goal final_qpos
+    current_qpos = franka.get_qpos()
+    print(f"\n[DEBUG] Planning attempt {attempt+1}")
+    print(f"  Current qpos: {current_qpos[:7]}")  # First 7 are arm joints
+    print(f"  Goal qpos: {final_qpos[:7]}")
+    print(f"  Goal position: {pos}")
+    print(f"  Planner: {planner}")
+    print(f"  Attached object: {attached_object}")
+
+    # First, ensure gripper is firmly closed before moving
+    current_arm_pos = franka.get_qpos()[:-2]
+    # for _ in range(5):
+    #     franka.control_dofs_position(current_arm_pos, motors_dof)
+    #     franka.control_dofs_force(np.array([-3.0, -3.0]), fingers_dof)
+    #     scene.step()
+
+    # trajectory_steps = int(qpos_diff * 100) # set trajectory time depending on starting difference
+
+    trajectory_steps = 30 # TODO Hard value for testing, remove once done.
+
+    travel_time = 5 # seconds
+    cur_time = 0 # seconds
+    past_pose = np.zeros(7,)
+    integral_pos_e = np.zeros(7,)
+
+    time_step = travel_time / trajectory_steps
+
+    # Convert tensors to numpy arrays for trajectory creation
+    final_qpos_np = np.asarray(final_qpos[:7], dtype=np.float64)  # Only arm joints
+    current_arm_pos_np = np.asarray(current_arm_pos, dtype=np.float64)
+    
+    trajectory = create_trajectory(final_qpos_np, current_arm_pos_np, travel_time, trajectory_steps)
+    # print("trajectory: ", trajectory)
+    # Gets this far error free
+
+    for des_state in trajectory:
+        franka.control_dofs_force(np.array([-3.0, -3.0]), fingers_dof)
+
+        print("des_state: ", des_state)
+
+        cur_qpos = franka.get_qpos()[:7]
+        print("cur_qpos: ",cur_qpos)
+        output_pose, past_pose, integral_pos_e = control(des_state, cur_qpos, time_step, cur_time, past_pose, integral_pos_e)
+        print("output_pose: ",output_pose)
+        # `output_pose` is a 7-element numpy array for the arm joints.
+        # Log the full arm pose and send it directly to the arm motors.
+        print("output_pose (arm 7-DOF):", output_pose)
+
+        franka.control_dofs_position(output_pose, motors_dof)  # Move arm without altering grip
+        scene.step()
+        sleep(time_step) # Probably blocking, is that alright?
+        cur_time += time_step
+
+    pose_dif = abs(output_pose - final_qpos_np)
+    print("pose_dif: ", pose_dif)
+    pose_dif_norm = np.linalg.norm(pose_dif)
+    print("pose_dif_norm: ", pose_dif_norm)
+    # if abs(output_pose - final_qpos) < 0.1
+
+
+def control(target_state, cur_pose, time_step, cur_time, past_pose, integral_pos_e):
+    """
+    Given a target state, control to that state.
+    
+    :param target_state: np.array of size (1,21), position: all joint position vals then vel, acc. numpy or tensor
+    :param cur_pose: current pose np.array of size (1,7), 
+    :param time_step: size of a time step, in seconds
+    :param cur_time: current time in the trajectory
+    :param past_pose: the previous pose
+
+    output desired positions.
+    """
+    
+    # Convert cur_pose to numpy array if it's a tensor
+    cur_pose_np = np.asarray(cur_pose, dtype=np.float64)
+    
+    # Ensure target_state is numpy array
+    target_state = np.asarray(target_state, dtype=np.float64)
+
+    pos_e = target_state[:7] - cur_pose_np
+    vel_e = target_state[8:14] - (cur_pose_np - past_pose) / time_step 
+    integral_pos_e = pos_e * cur_time
+
+    kp = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]) # labeled joints 1-7
+    kd = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]) # labeled joints 1-7
+    ki = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]) # labeled joints 1-7
+    max_integral = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])  # Anti-windup limit
+
+    target_change = kp*pos_e + kd*vel_e + ki*integral_pos_e
+
+    output_pose = cur_pose_np + target_change
+
+    return output_pose, cur_pose_np, integral_pos_e
+
+
+def M(t = float):
+            return np.array([[1, t, t**2, t**3, t**4, t**5],
+                    [0, 1, 2*t, 3*t**2, 4*t**3, 5*t**4],
+                    [0, 0, 2, 6*t, 12*t**2, 20*t**3]])
+
+
+def create_trajectory(target_pose, start_pose, travel_time, total_steps):
+    """
+    Create a line trajectory from one pose to another. 
+    Assuming desired final velocity and acceleration is 0.
+    Assuming initial velocity and acceleration is 0.
+    
+    :param target_pose: target pose for each joint angle in radians as 7 long numpy list
+    :param start_pose: same as above, as a target
+    :param travel_time: travel time in seconds
+    :param steps: total steps in the trajectory
+
+    :return trajectory: np.ndarray depicting a line trajectory
+    """
+    
+    # Ensure all inputs are numpy arrays
+    target_pose = np.asarray(target_pose, dtype=np.float64)
+    start_pose = np.asarray(start_pose, dtype=np.float64)
+
+    vel_i = np.zeros(7,)
+    # print("vel_i: ",vel_i)
+    acc_i = np.zeros(7,)
+    vel_f = np.zeros(7,)
+    acc_f = np.zeros(7,)
+
+    time_steps = np.linspace(0, travel_time, total_steps)
+
+    T = np.concatenate((M(0),M(travel_time)))
+    # print("T: ",T)
+
+    T_inv = np.linalg.inv(T)
+
+    trajectory_list = []  # Use list instead of array to avoid type issues
+
+    for t in time_steps:
+        # Build conditions matrix: shape (6, 7) for 6 boundary conditions and 7 joints
+        conditions = np.array([
+            start_pose,
+            vel_i,
+            acc_i,
+            target_pose,
+            vel_f,
+            acc_f
+        ])
+
+        coeffs = T_inv @ conditions # Coefficients for each power in the quintic matrix, shape (6, 7)
+
+        q_vals = M(t) @ coeffs  # Shape (3, 7): [position, velocity, acceleration]
+
+        t_pose = q_vals[0, :]  # Position row
+        t_vel = q_vals[1, :]   # Velocity row
+        t_acc = q_vals[2, :]   # Acceleration row
+
+        trajectory_list.append(np.hstack([t_pose, t_vel, t_acc]))
+    
+    state_array = np.array(trajectory_list)
+    
+    return state_array
 
 
 def STACK(block1, block2, blocks_state, franka, scene):
@@ -425,29 +646,32 @@ def PLACESOUTH(block1, block2, blocks_state, franka, scene):
     # #move up
     move_while_open(franka, scene, b2pos + np.array([0, -0.8, 0.3]))
 
+
 def PLACE_SPECIFIC(block, position, blocks_state, franka, scene):
+    print("Place_Specific")
     b = blocks_state[block]
     # Convert Genesis positions to proper numpy arrays
     # bpos = np.asarray(b.get_pos(), dtype=np.float64)
 
     #move above target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.30]), attached_object=b, waypoints=70)
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.30]), attached_object=b)
     # #lower to target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.14]), attached_object=b, waypoints=70)
+    control_to_pos(franka, scene, position + np.array([0, 0, 0.13]), attached_object=b, ignore_collisions=True)
     # #release
     open_gripper(franka, scene)
     # #move up
     move_while_open(franka, scene, position + np.array([0, 0, 0.3]))
 
 def PLACE_SPECIFIC_ORIENTED(block, position, quat, blocks_state, franka, scene):
+    print("Place_Specific_Oriented")
     b = blocks_state[block]
     # Convert Genesis positions to proper numpy arrays
     # bpos = np.asarray(b.get_pos(), dtype=np.float64)
 
     #move above target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.30]), quat, attached_object=b, waypoints=70)
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.30]), quat, attached_object=b,waypoints=200)
     # #lower to target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.14]), quat, attached_object=b, waypoints=70)
+    control_to_pos(franka, scene, position + np.array([0, 0, 0.13]), quat, attached_object=b, ignore_collisions=True, waypoints = 100)
     # #release
     open_gripper(franka, scene)
     # #move up
@@ -503,7 +727,7 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
             block = parts[1]
             print(f"WARNING: Place action not fully implemented for block {block}")
 
-        elif action_name == "placespecific":
+        elif action_name == "place_specific":
             # place block at a specific position
             block = parts[1]
             # Define target positions for each block
@@ -518,11 +742,11 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
             elif block == 'c':
                 position = target_positions['c']
             else:
-                print(f"ERROR: Unknown block for placespecific: {block}")
+                print(f"ERROR: Unknown block for place_specific: {block}")
                 continue
             PLACE_SPECIFIC(block, position, blocks_state, franka, scene)
         
-        elif action_name == "placespecificoriented":
+        elif action_name == "place_specific_oriented":
             # place block at a specific position with a specific quaternion orientation
             # Perhaps it's a little excessive to write all of this out. I can speed this up later.
             block = parts[1]
@@ -545,7 +769,7 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
 
             target_positions = {
                 # For Special Tower Task
-                'r1': np.array([0.5+r*math.cos(theta_r), -0.5+r*math.sin(theta_r), 0.0]),
+                'r1': np.array([0.6+r*math.cos(theta_r), -0.4+r*math.sin(theta_r), 0.0]),
                 'g1': np.array([0.5+r*math.cos(theta_g), -0.5+r*math.sin(theta_g), 0.0]),
                 'b1': np.array([0.5+r*math.cos(theta_b), -0.5+r*math.sin(theta_b), 0.0]),
                 'o1': np.array([0.5+r*math.cos(theta_o), -0.5+r*math.sin(theta_o), 0.0]),
@@ -601,7 +825,7 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
                 position = target_positions['y2']
                 quat = target_orientations['y2']
             else:
-                print(f"ERROR: Unknown block for placespecific: {block}")
+                print(f"ERROR: Unknown block for place_specific: {block}")
                 continue
             PLACE_SPECIFIC_ORIENTED(block, position, quat, blocks_state, franka, scene)
 
@@ -612,23 +836,29 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
             # print("block:", block)
             ref_block = parts[2]
             block_pos = np.asarray(block_state.get_pos(), dtype=np.float64)
+            print("block_pos: ",block_pos)
             block_quat = np.asarray(block_state.get_quat(), dtype=np.float64)
+            print("block quat: ",block_quat)
             # print("block_orient:", block_quat)
             # print("block_state:", block_state)
 
             # 0.02m is the half-width of a block, add more to create extra space
-            r = ((0.02/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
+            r = ((0.03/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
             theta_dif = 72*(math.pi/180)  # 72 degrees in radians
 
-            target_position = np.array([block_pos[0]+r*math.cos(theta_dif), block_pos[1]+r*math.sin(theta_dif), block_pos[2]]),
+            target_position = np.array([block_pos[0]+r*math.cos(theta_dif), block_pos[1]+r*math.sin(theta_dif), block_pos[2]])
+            print("target_position: ",target_position)
             target_quat = np.array(R.from_euler('xz', [math.pi,theta_dif]).as_quat(scalar_first=True))
-            
+            print("target_quat before: ",target_quat)
+
+
             # quaternion multiplication to combine orientations
             target_quat[0] = block_quat[0] * target_quat[0] - block_quat[1] * target_quat[1] - block_quat[2] * target_quat[2] - block_quat[3] * target_quat[3]
             target_quat[1] = block_quat[0] * target_quat[1] + block_quat[1] * target_quat[0] + block_quat[2] * target_quat[3] - block_quat[3] * target_quat[2]
             target_quat[2] = block_quat[0] * target_quat[2] - block_quat[1] * target_quat[3] + block_quat[2] * target_quat[0] + block_quat[3] * target_quat[1]
             target_quat[3] = block_quat[0] * target_quat[3] + block_quat[1] * target_quat[2] - block_quat[2] * target_quat[1] + block_quat[3] * target_quat[0]
 
+            print("target_quat after: ",target_quat)
             PLACE_SPECIFIC_ORIENTED(block, target_position, target_quat, blocks_state, franka, scene)
 
         

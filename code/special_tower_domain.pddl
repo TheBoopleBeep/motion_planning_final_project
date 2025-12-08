@@ -38,13 +38,13 @@
     :effect (and (on ?x ?y) (clear ?x) (handempty) (not (holding ?x)) (not (clear ?y))) ; x is on y and y is not clear and x is no longer held and x is clear
   )
 
-  (:action placespecific
+  (:action place_specific
     :parameters (?x - block)
     :precondition (holding ?x)
     :effect (and (clear ?x) (inplace ?x) (handempty) (not (holding ?x)))  ; x is clear and in place and not held
   )
 
-  (:action placespecificoriented
+  (:action place_specific_oriented
     :parameters (?x - block)
     :precondition (holding ?x)
     :effect (and (clear ?x) (oriented ?x) (inplace ?x) (handempty) (not (holding ?x)))  ; x is clear, oriented right in the correct position and not held
