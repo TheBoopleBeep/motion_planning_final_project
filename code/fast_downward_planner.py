@@ -175,14 +175,15 @@ def plan_task(domain_file, problem_file, search_algorithm='astar(lmcut())', alia
                     print("\n✗ Plan file exists but is empty")
                     return None
             else:
-                print("\n✗ No solution found - plan file not created")
+                print("\n No solution found")
+                
                 return None
                 
         except subprocess.TimeoutExpired:
-            print("\n✗ Fast Downward timed out after 5 minutes")
+            print("\n Fast Downward timed out after 5 minutes")
             return None
         except Exception as e:
-            print(f"\n✗ Error running Fast Downward: {e}")
+            print(f"\n Error running Fast Downward: {e}")
             return None
 
 def main():
