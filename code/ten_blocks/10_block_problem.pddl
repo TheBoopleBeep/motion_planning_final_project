@@ -1,0 +1,32 @@
+(define (problem ten-blocks)
+  (:domain blocks-world)
+  
+  (:objects r g b c m y o p w k s l n bb - block)
+  
+  (:init
+    (ontable r) (ontable g) (ontable b) (ontable c)
+    (ontable m) (ontable y) (ontable o) (ontable p)
+    (ontable k) (ontable s) (ontable l) (ontable n)
+    (ontable bb)
+    (clear r) (clear g) (clear b) (clear c)
+    (clear m) (clear y) (clear o) (clear p)
+    (clear k) (clear s) (clear l) (clear n)
+    (clear bb)
+    (handempty)
+  )
+  
+  (:goal (and
+    (on g r)
+    (on b g)
+    (on y b)
+    (on m y)
+    (on c m)
+    (on o c)
+    (on p o)
+    (on k p)
+    (on s k)
+    (on l s)
+    (on n l)
+    (on bb n)
+  ))
+)

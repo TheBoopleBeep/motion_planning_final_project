@@ -101,7 +101,7 @@ def create_scene_6blocks() -> Tuple[Any, Any, Dict[str, Any], Any]:
     return scene, franka, blocks_state
 
 
-def create_scene_8blocks() -> Tuple[Any, Any, Dict[str, Any], Any]:
+def create_scene_10blocks() -> Tuple[Any, Any, Dict[str, Any], Any]:
     """Create scene with 10 blocks.
 
     Returns:
@@ -113,16 +113,19 @@ def create_scene_8blocks() -> Tuple[Any, Any, Dict[str, Any], Any]:
     plane = scene.add_entity(gs.morphs.Plane())
     # add some random noise up to 5 cm in x/y
 
-    posR = np.array([.65,  0 , 0.02])
-    posG = np.array([.5, .1, 0.02])
-    posB = np.array([.4, .0 , 0.02])
-    posY = np.array([.3, .0 , 0.02])
-    posM = np.array([.3, .2 , 0.02])
-    posC = np.array([.4, -.1 , 0.02])
+    posR = np.array([.3,  -.4 , 0.02])
+    posG = np.array([.5, -.1, 0.02])
+    posB = np.array([.6, .1 , 0.02])
+    posY = np.array([.4, .1 , 0.02])
+    posM = np.array([.4, .2 , 0.02])
+    posC = np.array([.5, -.2 , 0.02])
     posO = np.array([.4, -.2 , 0.02])
-    posP = np.array([.4, 0.3 , 0.02])
-    posK = np.array([.4, -.3 , 0.02])
-    posS = np.array([.3, -.20 , 0.02])
+    posP = np.array([.5, 0.2 , 0.02])
+    posK = np.array([.4, 0 , 0.02])
+    posS = np.array([.4, -.10 , 0.02])
+    posL = np.array([.5, 0 , 0.02])
+    posN = np.array([.6, 0 , 0.02])
+    posBB = np.array([.6, 0.2 , 0.02])
 
     cubeR = scene.add_entity(
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos= posR),
@@ -164,6 +167,19 @@ def create_scene_8blocks() -> Tuple[Any, Any, Dict[str, Any], Any]:
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posS),
         surface=gs.options.surfaces.Plastic(color=(0.75, 0.75, 0.75)),
     )
+    cubeL = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posL),
+        surface=gs.options.surfaces.Plastic(color=(0.75, 1, 0.75)),
+    )
+    cubeN = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posN),
+        surface=gs.options.surfaces.Plastic(color=(0.5, 0, 0)),
+    )
+    cubeBB = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posBB),
+        surface=gs.options.surfaces.Plastic(color=(0.9, .6, 0.6)),
+    )
+
 
     franka_raw = scene.add_entity(gs.morphs.MJCF(file="xml/franka_emika_panda/panda.xml"))
     franka = RobotAdapter(franka_raw, scene)
@@ -177,7 +193,7 @@ def create_scene_8blocks() -> Tuple[Any, Any, Dict[str, Any], Any]:
     # slightly raise robot base to avoid initial collisions
     _elevate_robot_base(franka)
 
-    blocks_state: Dict[str, Any] = {"r": cubeR, "g": cubeG, "b": cubeB, "y": cubeY, "m": cubeM, "c": cubeC, "o": cubeO, "p": cubeP, "k": cubeK, "s": cubeS}
+    blocks_state: Dict[str, Any] = {"r": cubeR, "g": cubeG, "b": cubeB, "y": cubeY, "m": cubeM, "c": cubeC, "o": cubeO, "p": cubeP, "k": cubeK, "s": cubeS, "l":cubeL, "n" : cubeN, "bb": cubeBB}
 
     return scene, franka, blocks_state
 

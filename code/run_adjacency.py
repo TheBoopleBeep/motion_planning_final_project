@@ -237,7 +237,7 @@ def main():
         np.array([87, 87, 87, 87, 12, 12, 12, 100, 100]),
     )
     # Execute PDDL plan for adjacency problem
-    execute_pddl_plan('adjacency_plan.json', 'adjacency_task.pddl', 'adjacency_problem.pddl', BlocksState, franka, scene)
+    execute_pddl_plan('adjacency/adjacency_plan.json', 'adjacency/adjacency_task.pddl', 'adjacency/adjacency_problem.pddl', BlocksState, franka, scene)
 
 
 if __name__ == "__main__":
