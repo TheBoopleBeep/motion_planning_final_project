@@ -252,11 +252,11 @@ def create_scene_adjacency() -> Tuple[Any, Any, Dict[str, Any], Any]:
     plane = scene.add_entity(gs.morphs.Plane())
 
     # slightly different positions
-    pos1 = np.array([.3,  0.1 , 0.02])
-    pos2 = np.array([.45, .1, 0.02])
+    pos1 = np.array([.4,  0.1 , 0.02])
+    pos2 = np.array([.5, .1, 0.02])
     pos3 = np.array([.6, .1 , 0.02])
-    pos4 = np.array([.3, -.2 , 0.02])
-    pos5 = np.array([.45, -.2 , 0.02])
+    pos4 = np.array([.4, -.2 , 0.02])
+    pos5 = np.array([.5, -.2 , 0.02])
     pos6 = np.array([.6, -.2 , 0.02])
     cube1 = scene.add_entity(
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos1),

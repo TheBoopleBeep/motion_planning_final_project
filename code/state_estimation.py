@@ -362,7 +362,7 @@ class StateEstimation:
         Check if a block is in the target position and update its placed status.
         """
         for block in self.block_info:
-            if np.linalg.norm(block.position - np.array([.4, .4, .02])) < 0.01:
+            if np.linalg.norm(block.position - np.array([.45, .45, .02])) < 0.15:
                 block.placed = True
             else:
                 block.placed = False

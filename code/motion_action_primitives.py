@@ -382,11 +382,11 @@ def open_gripper(franka, scene):
     q_init = np.array(franka.get_qpos(), dtype=np.float64)
     target_gripper_pos = np.array([GRIPPER_OPEN_POSITION, GRIPPER_OPEN_POSITION], dtype=np.float64)
     
-    # Stabilize arm position
-    for _ in range(5):
-        franka.control_dofs_position(q_init[:7], motors_dof)
-        franka.control_dofs_position(q_init[-2:], fingers_dof)
-        scene.step()
+    # # Stabilize arm position
+    # for _ in range(5):
+    #     franka.control_dofs_position(q_init[:7], motors_dof)
+    #     franka.control_dofs_position(q_init[-2:], fingers_dof)
+    #     scene.step()
     
     # Open gripper to target position
     for _ in range(30):

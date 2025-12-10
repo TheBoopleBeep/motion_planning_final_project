@@ -1,0 +1,32 @@
+(define (problem adjacent-blocks)
+  (:domain adjacent-blocks-world-noclear)
+
+  (:objects b1 b2 b3 b4 b5 b6 - block)
+
+  (:init
+    (Sneighbor b1 b2)
+    (Wneighbor b1 b3)
+    (placed b1)
+    (Nneighbor b2 b1)
+    (placed b2)
+    (Eneighbor b3 b1)
+    (placed b3)
+    (Nneighbor b4 b6)
+    (Eneighbor b4 b5)
+    (longDiag b4 b1)
+    (placed b4)
+    (Wneighbor b5 b4)
+    (placed b5)
+    (Sneighbor b6 b4)
+    (placed b6)
+    (handempty)
+  )
+
+  (:goal (and
+    (Nneighbor b2 b1)
+    (Eneighbor b3 b1)
+    (longDiag b4 b1)
+    (Wneighbor b5 b4)
+    (Sneighbor b6 b4)
+  ))
+)
