@@ -27,6 +27,24 @@ class TowerCube:
     clear: bool = True
     ontable: bool = True
 
+@dataclass
+class adjacentCube:
+    """Representation of a block in the adjacency task."""
+    name: str
+    position: np.ndarray
+    NNeighbor: str = None
+    SNeighbor: str = None
+    ENeighbor: str = None
+    WNeighbor: str = None
+    longDiag: str = None
+    placed: bool = False
+
+@dataclass
+class specialCube:
+    """Representation of a block in special tasks."""
+    name: str
+    position: np.ndarray
+    ### Whatever else
 
 # Global gripper state instance
 gripperState = GripperState()
@@ -40,6 +58,7 @@ class StateEstimation:
     
     def __init__(self, problem):
         self.problem = problem
+        self.blocknames = []
         self.block_info = []
 
     def set_scene_info(self, franka, blocks_state):
@@ -55,7 +74,8 @@ class StateEstimation:
         """
         # Clear existing block info
         self.block_info = []
-        
+        # Reset keys (you know in case something weird happens)
+        self.blocknames = list(blocks_state.keys())
         # Update gripper position
         end_effector = franka.get_link("hand")
         EE_pose = end_effector.get_pos()
@@ -63,13 +83,25 @@ class StateEstimation:
         
         # Create block info for each block
         block_poses = {}
-        for block_name in self.problem.block_names:
+        for block_name in self.blocknames:
             if block_name in blocks_state:
                 block = blocks_state[block_name]
                 position = np.array(block.get_pos(), dtype=np.float64)
-                new_cube = TowerCube(name=block_name, position=position)
+                
+                # Create appropriate cube type based on problem
+                if self.problem == "tower":
+                    new_cube = TowerCube(name=block_name, position=position)
+                elif self.problem == "adjacency":
+                    new_cube = adjacentCube(name=block_name, position=position)
+                elif self.problem == 'special':
+                    new_cube = specialCube(name=block_name, position=position)
+                else:
+                    print(f"ERROR: Unknown problem type '{self.problem}'")
+                    continue
+                
                 self.block_info.append(new_cube)
                 block_poses[block_name] = position
+
             else:
                 print(f"WARNING: Block {block_name} not found in blocks_state.")
         
@@ -77,11 +109,21 @@ class StateEstimation:
         self.update_gripper_state()
         
         return block_poses, EE_pose
+    ####
+    ## TOWER TASK STATE ESTIMATION METHODS
+    ####
 
     def estimate_tower(self):
         """
         Determine stacking relationships between all blocks.
         """
+        # Reset stacking relationships for all blocks
+        for block in self.block_info:
+            block.on = None
+            block.clear = True
+            block.ontable = True
+        
+        # Determine stacking relationships
         for i in range(len(self.block_info)):
             for j in range(len(self.block_info)):
                 if i != j:
@@ -144,13 +186,35 @@ class StateEstimation:
         pddl_facts = []
         
         # Add block predicates
-        for block in self.block_info:
-            if block.ontable:
-                pddl_facts.append(f"(ontable {block.name})")
-            if block.on is not None:
-                pddl_facts.append(f"(on {block.name} {block.on})")
-            if block.clear:
-                pddl_facts.append(f"(clear {block.name})")
+        match self.problem:
+            case "tower":
+                for block in self.block_info:
+                    if block.ontable:
+                        pddl_facts.append(f"(ontable {block.name})")
+                    if block.on is not None:
+                        pddl_facts.append(f"(on {block.name} {block.on})")
+                    if block.clear:
+                        pddl_facts.append(f"(clear {block.name})")
+            case "adjacency":
+                for block in self.block_info:
+                    if block.NNeighbor is not None:
+                        pddl_facts.append(f"(Nneighbor {block.name} {block.NNeighbor})")
+                    if block.SNeighbor is not None:
+                        pddl_facts.append(f"(Sneighbor {block.name} {block.SNeighbor})")
+                    if block.ENeighbor is not None:
+                        pddl_facts.append(f"(Eneighbor {block.name} {block.ENeighbor})")
+                    if block.WNeighbor is not None:
+                        pddl_facts.append(f"(Wneighbor {block.name} {block.WNeighbor})")
+                    if block.longDiag is not None:
+                        pddl_facts.append(f"(longDiag {block.name} {block.longDiag})")
+                    if block.placed:
+                        pddl_facts.append(f"(placed {block.name})")
+            case 'special':
+                ##IMPLEMENT SPECIAL HERE
+                pass
+            case _:
+                print(f"ERROR: Unknown problem type. Cannot parse state to PDDL.'{self.problem}'")
+                return []
         
         # Add gripper predicates
         if gripperState.empty:
@@ -160,6 +224,9 @@ class StateEstimation:
         
         return pddl_facts
 
+    ####
+    ## TOWER TASK EXPECTED STATE UPDATE METHODS
+    ####
     def comp_PICK(self, block_name, current_facts):
         """
         Compute how predicates change after a PICK action.
@@ -218,10 +285,98 @@ class StateEstimation:
         
         return predicted_facts
     
-    def compare_states(self, predicted_facts, franka, blocks_state):
+    ####
+    ## ADJACENCY TASK STATE ESTIMATION METHODS
+    ####
+    def adjacent_state_estimation(self):
+        """
+        Update adjacency relationships between all blocks.
+        Make sure to call set_scene_info before running
+        """
+        print("\n\nHOWWWW\n\n")
+        #reset old info
+        self.estimate_adjacency()
+        self.update_gripper_state()
+        self.check_placed()
+
+    def estimate_adjacency(self):
+        """
+        Determine adjacency relationships between all blocks.
+        """
+        # Reset all neighbor relationships before recalculating
+        for block in self.block_info:
+            block.NNeighbor = None
+            block.SNeighbor = None
+            block.ENeighbor = None
+            block.WNeighbor = None
+            block.longDiag = None
+        
+        # Calculate neighbor relationships
+        for i in range(len(self.block_info)):
+            for j in range(i,len(self.block_info)):
+                if i != j:
+                    self.find_relative_placement(self.block_info[i], self.block_info[j])
+
+    def find_relative_placement(self, block_a, block_b):
+        """
+        Check relative placement of block_a with respect to block_b and update their states.
+        
+        Parameters:
+            block_a: adjacentCube to check
+            block_b: adjacentCube to check against
+        """
+        
+        relative_pose = block_a.position - block_b.position
+        x_diff, y_diff, _ = relative_pose
+
+        cardinal_dist_thresh = 0.07  # 7 cm
+        perp_dist_error = .03  # 3 cm
+        long_diag_offset = .088 # 8.8 cm
+        long_diag_thresh = 0.02  # 2 cm
+        # block_a north of block_b means block_a is the north neighbor of block_b
+        if  x_diff < cardinal_dist_thresh and x_diff > 0.02 and abs(y_diff) < perp_dist_error:
+            block_a.NNeighbor = block_b.name
+            block_b.SNeighbor = block_a.name
+        # block_a south of block_b
+        elif x_diff > -cardinal_dist_thresh and x_diff < -0.02 and abs(y_diff) < perp_dist_error:
+            block_a.SNeighbor = block_b.name
+            block_b.NNeighbor = block_a.name
+        # block_a east of block_b
+        elif y_diff < cardinal_dist_thresh and y_diff > 0.02 and abs(x_diff) < perp_dist_error:
+            block_a.ENeighbor = block_b.name
+            block_b.WNeighbor = block_a.name
+        # block_a west of block_b
+        elif y_diff > -cardinal_dist_thresh and y_diff < -0.02 and abs(x_diff) < perp_dist_error:
+            block_a.WNeighbor = block_b.name
+            block_b.ENeighbor = block_a.name
+        # block_a is NE diagonal of block_b
+        elif abs(x_diff - long_diag_offset) < long_diag_thresh and abs(y_diff - long_diag_offset) < long_diag_thresh:
+            block_a.longDiag = block_b.name
+        # block_a is SW diagonal of block_b (so block_b is NE diagonal of block_a)
+        elif abs(x_diff + long_diag_offset) < long_diag_thresh and abs(y_diff + long_diag_offset) < long_diag_thresh:
+            block_b.longDiag = block_a.name
+            
+
+    def check_placed(self):
+        """
+        Check if a block is in the target position and update its placed status.
+        """
+        for block in self.block_info:
+            if np.linalg.norm(block.position - np.array([.4, .4, .02])) < 0.01:
+                block.placed = True
+            else:
+                block.placed = False
+    
+        
+
+
+    ####
+    ## PDDL PLANNING AND STATE COMPARISON METHODS
+    ####
+    def compare_states(self, predicted_facts, franka):
         """
         Compare predicted state (from action model) with actual observed state.
-        
+        needs accompanying state update functions
         Parameters:
             predicted_facts: Set of predicted PDDL facts after an action
             franka: Robot adapter
@@ -235,15 +390,6 @@ class StateEstimation:
                 - 'predicted': set - predicted facts
                 - 'actual': set - actual observed facts
         """
-        # Update current state from scene
-        for block_info in self.block_info:
-            if block_info.name in blocks_state:
-                block = blocks_state[block_info.name]
-                block_info.position = np.array(block.get_pos(), dtype=np.float64)
-                # Reset state for fresh estimation
-                block_info.on = None
-                block_info.clear = True
-                block_info.ontable = True
         
         # Update gripper state
         end_effector = franka.get_link("hand")
@@ -252,10 +398,23 @@ class StateEstimation:
         gripperState.empty = True
         gripperState.holding = None
         self.update_gripper_state()
+
         
         # Estimate current tower configuration
-        self.estimate_tower()
-        
+        match self.problem:
+            case "tower":
+                self.estimate_tower()
+                return
+            case "adjacency":
+                self.adjacent_state_estimation()
+                return
+            case 'special':
+                ##IMPLEMENT SPECIAL HERE
+                return
+            case _:
+                #assume adjacency
+                self.adjacent_state_estimation()
+
         # Get actual state
         actual_facts = set(self.parse_state_to_pddl())
         
@@ -272,68 +431,6 @@ class StateEstimation:
             'actual': actual_facts
         }
 
-    def replan_from_current_state(self, franka, blocks_state, domain_file, goal_config, output_problem_file=None):
-        """
-        Rerun the Fast Downward planner from the current tower state.
-        
-        Parameters:
-            franka: Robot adapter
-            blocks_state: Dictionary mapping block names to block entities
-            domain_file: Path to the PDDL domain file
-            goal_config: List of tuples representing goal (e.g., [('on', 'g', 'r'), ('on', 'b', 'g')])
-            output_problem_file: Optional path to save the generated problem file
-            
-        Returns:
-            List of action strings representing the new plan, or None if no solution found
-        """
-        # Update block positions from blocks_state
-        for block_info in self.block_info:
-            if block_info.name in blocks_state:
-                block = blocks_state[block_info.name]
-                block_info.position = np.array(block.get_pos(), dtype=np.float64)
-                # Reset state for fresh estimation
-                block_info.on = None
-                block_info.clear = True
-                block_info.ontable = True
-        
-        # Update gripper position
-        end_effector = franka.get_link("hand")
-        EE_pose = end_effector.get_pos()
-        gripperState.pos = np.array(EE_pose, dtype=np.float64)
-        
-        # Update gripper state (checks which block is held)
-        self.update_gripper_state()
-        
-        # Estimate current tower configuration
-        self.estimate_tower()
-        
-        # Generate PDDL problem file from current state
-        problem_content = self._generate_pddl_problem(goal_config)
-        
-        # Optionally save the problem file for debugging/inspection
-        if output_problem_file is not None:
-            with open(output_problem_file, 'w') as f:
-                f.write(problem_content)
-            print(f"Generated PDDL problem file: {output_problem_file}")
-        
-        print("Current state:")
-        for block in self.block_info:
-            print(f"  {block.name}: on={block.on}, clear={block.clear}, ontable={block.ontable}")
-        
-        # Print gripper state
-        if gripperState.empty:
-            print(f"  Gripper: empty")
-        else:
-            print(f"  Gripper: holding {gripperState.holding}")
-        
-        # Run Fast Downward planner
-        print("\nRunning Fast Downward planner...")
-        solution = plan_task_from_string(domain_file, problem_content)
-        
-        if solution is None:
-            print("❌ No solution found")
-        
-        return solution
     
     def _generate_pddl_problem(self, goal_config):
         """
@@ -345,15 +442,19 @@ class StateEstimation:
         Returns:
             String containing the PDDL problem definition
         """
-        # Get block names
-        block_names = [block.name for block in self.block_info]
+        # Get block names and save as instance variable
+        self.blocknames = [block.name for block in self.block_info]
         
-        # Start building PDDL problem
-        pddl = "(define (problem replanned-blocks)\n"
-        pddl += "  (:domain blocks-world)\n\n"
+        # Start building PDDL problem with task-specific naming
+        if self.problem == "adjacency":
+            pddl = "(define (problem adjacent-blocks)\n"
+            pddl += "  (:domain adjacent-blocks-world-noclear)\n\n"
+        else:
+            pddl = "(define (problem replanned-blocks)\n"
+            pddl += "  (:domain blocks-world)\n\n"
         
         # Objects
-        pddl += "  (:objects " + " ".join(block_names) + " - block)\n\n"
+        pddl += "  (:objects " + " ".join(self.blocknames) + " - block)\n\n"
         
         # Initial state
         pddl += "  (:init\n"
@@ -373,6 +474,102 @@ class StateEstimation:
         pddl += ")\n"
         
         return pddl
+    
+
+    def replan_from_current_state(self, franka, blocks_state, domain_file, output_problem_file=None):
+        """
+        Rerun the Fast Downward planner from the current tower state.
+        
+        Parameters:
+            franka: Robot adapter
+            blocks_state: Dictionary mapping block names to block entities
+            domain_file: Path to the PDDL domain file
+            goal_config: List of tuples representing goal (e.g., [('on', 'g', 'r'), ('on', 'b', 'g')])
+            output_problem_file: Optional path to save the generated problem file
+            
+        Returns:
+            List of action strings representing the new plan, or None if no solution found
+        """
+        # Update scene info
+        self.set_scene_info(franka, blocks_state)
+        
+        # Update gripper position
+        end_effector = franka.get_link("hand")
+        EE_pose = end_effector.get_pos()
+        gripperState.pos = np.array(EE_pose, dtype=np.float64)
+        
+        # Update gripper state (checks which block is held)
+        self.update_gripper_state()
+        
+        # Estimate state and set goal config based on problem type
+        if self.problem == "tower":
+            self.estimate_tower()
+            # Define goal: build 12-block tower (matching 10_block_problem.pddl)
+            goal_config = [
+                ('on', 'g', 'r'),
+                ('on', 'b', 'g'),
+                ('on', 'y', 'b'),
+                ('on', 'm', 'y'),
+                ('on', 'c', 'm'),
+                ('on', 'o', 'c'),
+                ('on', 'p', 'o'),
+                ('on', 'k', 'p'),
+                ('on', 's', 'k'),
+                ('on', 'l', 's'),
+                ('on', 'n', 'l'),
+                ('on', 'bb', 'n')
+            ]
+        elif self.problem == "adjacency":
+            self.adjacent_state_estimation()
+            goal_config = [
+                ('Nneighbor', 'b2', 'b1'),
+                ('Eneighbor', 'b3', 'b1'),
+                ('longDiag', 'b4', 'b1'),
+                ('Wneighbor', 'b5', 'b4'),
+                ('Sneighbor', 'b6', 'b4')
+            ]
+        else:
+            # Default to adjacency
+            self.adjacent_state_estimation()
+            goal_config = []
+        
+        # Generate PDDL problem file from current state
+        problem_content = self._generate_pddl_problem(goal_config)
+        
+        # Save problem file for debugging
+        debug_file = 'debug_problem.pddl'
+        with open(debug_file, 'w') as f:
+            f.write(problem_content)
+        print(f"Generated PDDL problem saved to: {debug_file}")
+        
+        # Optionally save the problem file for debugging/inspection
+        if output_problem_file is not None:
+            with open(output_problem_file, 'w') as f:
+                f.write(problem_content)
+            print(f"Generated PDDL problem file: {output_problem_file}")
+        
+        print("Current state:")
+        for block in self.block_info:
+            if self.problem == "tower":
+                print(f"  {block.name}: on={block.on}, clear={block.clear}, ontable={block.ontable}")
+            elif self.problem == "adjacency":
+                print(f"  {block.name}: NNeighbor={block.NNeighbor}, SNeighbor={block.SNeighbor}, ENeighbor={block.ENeighbor}, WNeighbor={block.WNeighbor}, longDiag={block.longDiag}, placed={block.placed}")
+            else:
+                print(f"  {block.name}: NNeighbor={block.NNeighbor}, SNeighbor={block.SNeighbor}, ENeighbor={block.ENeighbor}, WNeighbor={block.WNeighbor}, longDiag={block.longDiag}, placed={block.placed}")
+        # Print gripper state
+        if gripperState.empty:
+            print(f"Gripper: empty")
+        else:
+            print(f"Gripper: holding {gripperState.holding}")
+        
+        # Run Fast Downward planner
+        print("\nRunning planner...")
+        solution = plan_task_from_string(domain_file, problem_content)
+        
+        if solution is None:
+            print("No solution found")
+        
+        return solution
 
 
     

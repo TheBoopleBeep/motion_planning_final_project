@@ -9,9 +9,9 @@
   
   (:goal (and
     (Nneighbor b2 b1)
-    (Eneighbor b3 b1)
+    (Wneighbor b3 b1)
     (longDiag b4 b1)
-    (Wneighbor b5 b4)
+    (Eneighbor b5 b4)
     (Sneighbor b6 b4)
   ))
 )

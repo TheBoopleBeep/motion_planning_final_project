@@ -143,47 +143,29 @@ def plan_task(domain_file, problem_file, search_algorithm='astar(lmcut())', alia
             # Use custom search configuration
             cmd = fd_command + [domain_file, problem_file, '--search', search_algorithm]
         
-        print(f"Running Fast Downward with command: {' '.join(cmd)}")
-        
         try:
-            # Run Fast Downward
+            # Run Fast Downward with suppressed output
             result = subprocess.run(
                 cmd,
                 cwd=temp_dir,
-                capture_output=True,
-                text=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 timeout=300  # 5 minute timeout
             )
-            
-            # Print output for debugging
-            if result.stdout:
-                print("\n--- Fast Downward Output ---")
-                print(result.stdout)
-            if result.stderr:
-                print("\n--- Fast Downward Errors ---")
-                print(result.stderr)
             
             # Check if plan was found
             if os.path.exists(plan_file):
                 solution = parse_fast_downward_plan(plan_file)
                 if solution:
-                    print(f"\n✓ Solution found with {len(solution)} steps\n")
-                    for i, action in enumerate(solution, 1):
-                        print(f"  {i}. {action}")
                     return solution
                 else:
-                    print("\n✗ Plan file exists but is empty")
-                    return None
+                    return []
             else:
-                print("\n No solution found")
-                
                 return None
                 
         except subprocess.TimeoutExpired:
-            print("\n Fast Downward timed out after 5 minutes")
             return None
         except Exception as e:
-            print(f"\n Error running Fast Downward: {e}")
             return None
 
 def main():

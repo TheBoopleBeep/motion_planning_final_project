@@ -34,18 +34,16 @@ def STACK(block1, block2, blocks_state, franka, scene):
     # Track base block position for alignment
     if baseblock is None:
         baseblock = b2
-        print(f"Setting baseblock to {block2}")
     
     basepos = np.asarray(baseblock.get_pos(), dtype=np.float64)
     
     # Update base position if target block has moved significantly
     if np.linalg.norm(b2pos - basepos) > 0.1:
         basepos = np.asarray(b2.get_pos(), dtype=np.float64)
-        print(f"Updating base position to {block2} due to distance")
     
     # Move above target block
     move_while_closed(franka, scene, np.array([basepos[0], basepos[1], b2pos[2] + 0.2]), 
-                     attached_object=b1, waypoints=-1, quat=quat)
+                     attached_object=b1, waypoints=-1, quat=quat, tolerance=.001)
     for _ in range(30):
         scene.step()
     
@@ -59,10 +57,6 @@ def STACK(block1, block2, blocks_state, franka, scene):
     else:
         # Normal placement
         des_pos = np.array([diff[0] + basepos[0] - 0.001265, diff[1] + basepos[1] - 0.00327, b2pos[2] + 0.111]) + GRIPPER_EE_OFFSET
-    
-    print(f"Baseblock position: {basepos}, stacking on {block1} at {b2pos}")
-    print(f"Alignment correction: {diff}")
-    print(f"Final position: {des_pos}")
     
     # Move to final position and place
     move_while_closed(franka, scene, des_pos, tolerance=0.001, attached_object=b1, waypoints=40, quat=quat)
@@ -84,7 +78,7 @@ def PICK(block, blocks_state, franka, scene):
     bpos = np.asarray(b.get_pos(), dtype=np.float64)
     
     # Move above block (offset accounts for gripper geometry)
-    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, waypoints=-1, waypoint_scale=.5)
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, waypoints=-1, waypoint_scale=.5, tolerance = .01)
     
     # Lower to block
     move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.07]) + GRIPPER_EE_OFFSET, 
@@ -137,7 +131,7 @@ def execute_action(action_str, blocks_state, franka, scene, estimator=None, veri
     parts = action_str.replace('(', '').replace(')', '').split()
     action_name = parts[0]
     
-    print(f"\n>>> Executing action: {action_str}")
+    print(f"Executing: {action_str}")
     
     # Compute predicted state for verification
     predicted_facts = None
@@ -165,20 +159,10 @@ def execute_action(action_str, blocks_state, franka, scene, estimator=None, veri
             print(f"ERROR: Unknown action: {action_name}")
             return {'success': False, 'state_comparison': None}
         
-        print(f"✓ Action completed: {action_str}")
-        
         # Verify state if requested
         state_comparison = None
         if verify_state and estimator is not None and predicted_facts is not None:
             state_comparison = estimator.compare_states(predicted_facts, franka, blocks_state)
-            if state_comparison['matches']:
-                print(f"  ✓ State matches prediction")
-            else:
-                print(f"  ⚠ State mismatch detected!")
-                if state_comparison['missing_in_actual']:
-                    print(f"    Missing in actual: {state_comparison['missing_in_actual']}")
-                if state_comparison['extra_in_actual']:
-                    print(f"    Extra in actual: {state_comparison['extra_in_actual']}")
         
         return {'success': True, 'state_comparison': state_comparison}
         
@@ -188,14 +172,12 @@ def execute_action(action_str, blocks_state, franka, scene, estimator=None, veri
         return {'success': False, 'state_comparison': None}
 
 
-def execute_with_replanning(domain_file, goal_config, blocks_state, franka, scene, max_iterations=100):
+def execute_with_replanning(domain_file, blocks_state, franka, scene, max_iterations=100):
     """
     Execute a task with replanning only when state mismatches are detected.
     
     Parameters:
         domain_file: Path to the PDDL domain file
-        goal_config: List of goal predicates as tuples, e.g.:
-                     [('on', 'g', 'r'), ('on', 'b', 'g'), ('on', 'y', 'b')]
         blocks_state: Dictionary mapping block names to block entities
         franka: Robot adapter
         scene: Genesis scene
@@ -204,14 +186,9 @@ def execute_with_replanning(domain_file, goal_config, blocks_state, franka, scen
     Returns:
         True if goal was achieved, False otherwise
     """
-    # Create state estimator once and reuse it
-    class DummyProblem:
-        def __init__(self, block_names):
-            self.block_names = block_names
-    
-    block_names = list(blocks_state.keys())
-    dummy_problem = DummyProblem(block_names)
-    estimator = StateEstimation(dummy_problem)
+
+
+    estimator = StateEstimation("tower")
     
     # Initialize block info once
     estimator.set_scene_info(franka, blocks_state)
@@ -224,27 +201,24 @@ def execute_with_replanning(domain_file, goal_config, blocks_state, franka, scen
     while iteration < max_iterations:
         iteration += 1
         
-        print(f"\n{'='*70}")
-        print(f"ITERATION {iteration}")
-        print(f"{'='*70}")
-        
         # Replan only if needed (first iteration, state mismatch, or action failure)
         if need_replan:
-            print("Replanning from current state...")
+            print(f"\nReplanning (iteration {iteration})...")
             
             # Replan (this internally updates all state)
-            plan = estimator.replan_from_current_state(franka, blocks_state, domain_file, goal_config)
+            plan = estimator.replan_from_current_state(franka, blocks_state, domain_file)
             plan_index = 0  # Reset to start of new plan
             need_replan = False  # Reset flag
             
-            # Check if we've reached the goal
-            if plan is None or len(plan) == 0:
-                print("\n" + "="*70)
-                print("🎉 GOAL ACHIEVED! No more actions needed.")
-                print("="*70)
+            # Check planner result
+            if plan is None:
+                print("\nPlanner failed to find a solution")
+                return False
+            elif len(plan) == 0:
+                print("\nGoal achieved!")
                 return True
-        else:
-            print(f"Continuing with existing plan (action {plan_index + 1}/{len(plan)})")
+            else:
+                print(f"Plan generated with {len(plan)} actions")
         
         # Execute next action with state verification
         action = plan[plan_index]
@@ -252,26 +226,23 @@ def execute_with_replanning(domain_file, goal_config, blocks_state, franka, scen
         
         # Determine if replanning is needed
         if not result['success']:
-            print("\n⚠ Action failed, will replan...")
             need_replan = True
         elif result['state_comparison'] and not result['state_comparison']['matches']:
-            print("\n⚠ State mismatch detected, will replan...")
             need_replan = True
         else:
             plan_index += 1
             if plan_index >= len(plan):
-                print("\n✓ Completed all actions in current plan")
                 need_replan = True
         
         # Wait a bit for the scene to settle
         for _ in range(10):
             scene.step()
     
-    print(f"\n✗ Maximum iterations ({max_iterations}) reached without achieving goal")
+    print(f"\nMaximum iterations ({max_iterations}) reached")
     return False
 
 
-def replan_tower(franka, blocks_state, domain_file, goal_config, output_problem_file=None):
+def replan_tower(franka, blocks_state, domain_file, output_problem_file=None):
     """
     Replan from the current tower state using Fast Downward.
     
@@ -279,8 +250,6 @@ def replan_tower(franka, blocks_state, domain_file, goal_config, output_problem_
         franka: Robot adapter
         blocks_state: Dictionary mapping block names to block entities
         domain_file: Path to the PDDL domain file (e.g., 'ten_blocks/10_block_domain.pddl')
-        goal_config: List of goal predicates as tuples, e.g.:
-                     [('on', 'g', 'r'), ('on', 'b', 'g'), ('on', 'y', 'b')]
         output_problem_file: Optional path to save the generated problem file
                             If None, a temporary file will be created and deleted
     
@@ -292,41 +261,23 @@ def replan_tower(franka, blocks_state, domain_file, goal_config, output_problem_
         goal = [('on', 'g', 'r'), ('on', 'b', 'g'), ('on', 'y', 'b')]
         new_plan = replan_tower(franka, BlocksState, 'ten_blocks/10_block_domain.pddl', goal)
     """
-    # Create a dummy problem structure to initialize state estimation
-    class DummyProblem:
-        def __init__(self, block_names):
-            self.block_names = block_names
-    
+
     # Get block names from blocks_state dictionary
     block_names = list(blocks_state.keys())
-    dummy_problem = DummyProblem(block_names)
     
     # Initialize state estimator
-    estimator = StateEstimation(dummy_problem)
+    estimator = StateEstimation("tower")
     
     # Set initial scene information
     estimator.set_scene_info(franka, blocks_state)
     
     # Replan from current state
-    print("\n" + "="*60)
-    print("REPLANNING FROM CURRENT STATE")
-    print("="*60)
-    
     new_plan = estimator.replan_from_current_state(
         franka=franka,
         blocks_state=blocks_state,
         domain_file=domain_file,
-        goal_config=goal_config,
         output_problem_file=output_problem_file
     )
-    
-    if new_plan:
-        print(f"\n✓ New plan generated with {len(new_plan)} steps")
-        print("\nNew Plan:")
-        for i, action in enumerate(new_plan, 1):
-            print(f"  {i}. {action}")
-    else:
-        print("\n✗ Failed to generate new plan")
     
     return new_plan
 
@@ -358,26 +309,10 @@ def main():
         np.array([87, 87, 87, 87, 12, 12, 12, 100, 100]),
     )
 
-    # Define goal: build 12-block tower (bb on n, n on l, l on s, ..., g on r)
-    goal_config = [
-        ('on', 'g', 'r'),
-        ('on', 'b', 'g'),
-        ('on', 'y', 'b'),
-        ('on', 'm', 'y'),
-        ('on', 'c', 'm'),
-        ('on', 'o', 'c'),
-        ('on', 'p', 'o'),
-        ('on', 'k', 'p'),
-        ('on', 's', 'k'),
-        ('on', 'l', 's'),
-        ('on', 'n', 'l'),
-        ('on', 'bb', 'n')
-    ]
     
     # Execute with replanning after each action
     success = execute_with_replanning(
         domain_file='ten_blocks/10_block_domain.pddl',
-        goal_config=goal_config,
         blocks_state=BlocksState,
         franka=franka,
         scene=scene,
@@ -385,9 +320,9 @@ def main():
     )
     
     if success:
-        print("\n✓ Task completed successfully!")
+        print("\nTask completed successfully!")
     else:
-        print("\n✗ Task failed to complete")
+        print("\nTask failed to complete")
 
 
 if __name__ == "__main__":
