@@ -1,7 +1,7 @@
 import sys
 import numpy as np
 import genesis as gs
-from scenes import create_scene_6blocks, create_scene_stacked, create_scene_10blocks
+from scenes import create_scene_special_tower
 from motion_action_primitives import execute_pddl_plan
 
 
@@ -17,8 +17,7 @@ def main():
         gs.init(backend=gs.cpu, logging_level='Warning', logger_verbose_time=False)
 
     # Build the scene using the factory
-    scene, franka, BlocksState = create_scene_10blocks()
-    #scene, franka, BlocksState = create_scene_stacked()
+    scene, franka, BlocksState = create_scene_special_tower()
 
     # Set control gains
     # Note: the following values are tuned for achieving best behavior with Franka
@@ -37,7 +36,7 @@ def main():
     )
 
     # Execute PDDL plan for special tower problem
-    execute_pddl_plan('special_tower_domain.pddl', 'special_tower_problem.pddl', BlocksState, franka, scene)
+    execute_pddl_plan('special_tower/special_tower_domain.pddl', 'special_tower/special_tower_problem.pddl', BlocksState, franka, scene)
 
 
 if __name__ == "__main__":

@@ -180,7 +180,7 @@ def create_scene_8blocks() -> Tuple[Any, Any, Dict[str, Any], Any]:
 
     return scene, franka, blocks_state
 
-def create_scene_10blocks() -> Tuple[Any, Any, Dict[str, Any], Any]:
+def create_scene_special_tower() -> Tuple[Any, Any, Dict[str, Any], Any]:
     """Create a scene for the special tower task
 
     Returns:

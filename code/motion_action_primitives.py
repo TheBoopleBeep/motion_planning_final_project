@@ -2,7 +2,6 @@ import sys
 import warnings
 import numpy as np
 import math
-from scenes import create_scene_6blocks, create_scene_stacked
 from pddl_planner import plan_task
 from scipy.spatial.transform import Rotation as R
 from time import sleep

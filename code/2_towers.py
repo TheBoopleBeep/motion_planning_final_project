@@ -38,7 +38,7 @@ def main():
     )
 
     # Execute PDDL plan
-    execute_pddl_plan('2_towers_domain.pddl', '2_towers_problem.pddl', BlocksState, franka, scene)
+    execute_pddl_plan('2_towers/2_towers_domain.pddl', '2_towers/2_towers_problem.pddl', BlocksState, franka, scene)
 
 if __name__ == "__main__":
     # No need for extra arguments in this code.
