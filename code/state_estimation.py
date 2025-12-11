@@ -46,6 +46,16 @@ class specialCube:
     position: np.ndarray
     ### Whatever else
 
+@dataclass
+class TwoTowerCube:
+    """Representation of a block in the two towers task."""
+    name: str
+    position: np.ndarray
+    on: str = None
+    clear: bool = True
+    ontable: bool = True
+    placedleft: bool = False
+    placedright: bool = False
 # Global gripper state instance
 gripperState = GripperState()
 
@@ -95,6 +105,8 @@ class StateEstimation:
                     new_cube = adjacentCube(name=block_name, position=position)
                 elif self.problem == 'special':
                     new_cube = specialCube(name=block_name, position=position)
+                elif self.problem == 'towers':
+                    new_cube = TwoTowerCube(name=block_name, position=position)
                 else:
                     print(f"ERROR: Unknown problem type '{self.problem}'")
                     continue
@@ -109,6 +121,7 @@ class StateEstimation:
         self.update_gripper_state()
         
         return block_poses, EE_pose
+    
     ####
     ## TOWER TASK STATE ESTIMATION METHODS
     ####
@@ -209,6 +222,18 @@ class StateEstimation:
                         pddl_facts.append(f"(longDiag {block.name} {block.longDiag})")
                     if block.placed:
                         pddl_facts.append(f"(placed {block.name})")
+            case 'towers':
+                for block in self.block_info:
+                    if block.ontable:
+                        pddl_facts.append(f"(ontable {block.name})")
+                    if block.on is not None:
+                        pddl_facts.append(f"(on {block.name} {block.on})")
+                    if block.clear:
+                        pddl_facts.append(f"(clear {block.name})")
+                    if block.placedleft:
+                        pddl_facts.append(f"(placedleft {block.name})")
+                    if block.placedright:
+                        pddl_facts.append(f"(placedright {block.name})")
             case 'special':
                 ##IMPLEMENT SPECIAL HERE
                 pass
@@ -285,6 +310,33 @@ class StateEstimation:
         
         return predicted_facts
     
+    #### 
+    ## TWO TOWERS TASK STATE ESTIMATION METHODS
+    ####
+    def estimate_two_towers(self):
+        """
+        Determine stacking relationships between all blocks for two towers task.
+        """
+        # Reset stacking relationships for all blocks
+        for block in self.block_info:
+            block.on = None
+            block.clear = True
+            block.ontable = True
+            block.placedleft = False
+            block.placedright = False
+        
+        # Determine stacking relationships
+        for i in range(len(self.block_info)):
+            if np.linalg.norm(self.block_info[i].position - np.array([.3, -.45, .02])) < 0.04:
+                self.block_info[i].placedleft = True
+            if np.linalg.norm(self.block_info[i].position - np.array([.3, 0.45, .02])) < 0.04:
+                self.block_info[i].placedright = True  
+            for j in range(len(self.block_info)):
+                if i != j:
+                    self.update_stacked(self.block_info[i], self.block_info[j])
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+
     ####
     ## ADJACENCY TASK STATE ESTIMATION METHODS
     ####
@@ -449,6 +501,12 @@ class StateEstimation:
         if self.problem == "adjacency":
             pddl = "(define (problem adjacent-blocks)\n"
             pddl += "  (:domain adjacent-blocks-world-noclear)\n\n"
+        elif self.problem == "tower":
+            pddl = "(define (problem tower-blocks)\n"
+            pddl += "  (:domain blocks-world)\n\n"
+        elif self.problem == 'towers':
+            pddl = "(define (problem two-tower-blocks)\n"
+            pddl += "  (:domain towers-world)\n\n"
         else:
             pddl = "(define (problem replanned-blocks)\n"
             pddl += "  (:domain blocks-world)\n\n"
@@ -504,6 +562,7 @@ class StateEstimation:
         # Estimate state and set goal config based on problem type
         if self.problem == "tower":
             self.estimate_tower()
+            print("???")
             # Define goal: build 12-block tower (matching 10_block_problem.pddl)
             goal_config = [
                 ('on', 'g', 'r'),
@@ -527,6 +586,17 @@ class StateEstimation:
                 ('longDiag', 'b4', 'b1'),
                 ('Wneighbor', 'b5', 'b4'),
                 ('Sneighbor', 'b6', 'b4')
+            ]
+        elif self.problem == "towers":
+            self.estimate_two_towers()
+            # Define goal: build 12-block tower (matching 10_block_problem.pddl)
+            goal_config = [
+                ('on', 'g', 'b'),
+                ('on', 'r', 'g'),
+                ('on', 'm', 'c'),
+                ('on', 'y', 'm'),
+                ('placedleft', 'b'),
+                ('placedright', 'c')
             ]
         else:
             # Default to adjacency
@@ -554,6 +624,8 @@ class StateEstimation:
                 print(f"  {block.name}: on={block.on}, clear={block.clear}, ontable={block.ontable}")
             elif self.problem == "adjacency":
                 print(f"  {block.name}: NNeighbor={block.NNeighbor}, SNeighbor={block.SNeighbor}, ENeighbor={block.ENeighbor}, WNeighbor={block.WNeighbor}, longDiag={block.longDiag}, placed={block.placed}")
+            elif self.problem == "towers":
+                print(f"  {block.name}: on={block.on}, clear={block.clear}, ontable={block.ontable}, placedleft={block.placedleft}, placedright={block.placedright}")
             else:
                 print(f"  {block.name}: NNeighbor={block.NNeighbor}, SNeighbor={block.SNeighbor}, ENeighbor={block.ENeighbor}, WNeighbor={block.WNeighbor}, longDiag={block.longDiag}, placed={block.placed}")
         # Print gripper state
@@ -564,8 +636,10 @@ class StateEstimation:
         
         # Run Fast Downward planner
         print("\nRunning planner...")
+        print("Domain file:", domain_file)
+        print("Problem content:\n", problem_content)
         solution = plan_task_from_string(domain_file, problem_content)
-        
+        print(solution)
         if solution is None:
             print("No solution found")
         

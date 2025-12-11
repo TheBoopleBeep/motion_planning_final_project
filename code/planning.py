@@ -115,7 +115,7 @@ class PlannerInterface:
             from ompl import base as ob
             from ompl import geometric as og
             from ompl import util as ou
-            ou.setLogLevel(ou.LOG_ERROR)
+            ou.setLogLevel(ou.LOG_WARN)  # Changed from LOG_ERROR to see more diagnostic output
         except ImportError:
             gs.raise_exception(
                 "Failed to import OMPL. Install instructions: "

@@ -1,0 +1,6 @@
+/home/bdc/motion_planning_final_project/code/fast-downward-24.06.1/builds/release/CMakeFiles/translate.dir
+/home/bdc/motion_planning_final_project/code/fast-downward-24.06.1/builds/release/CMakeFiles/edit_cache.dir
+/home/bdc/motion_planning_final_project/code/fast-downward-24.06.1/builds/release/CMakeFiles/rebuild_cache.dir
+/home/bdc/motion_planning_final_project/code/fast-downward-24.06.1/builds/release/search/CMakeFiles/downward.dir
+/home/bdc/motion_planning_final_project/code/fast-downward-24.06.1/builds/release/search/CMakeFiles/edit_cache.dir
+/home/bdc/motion_planning_final_project/code/fast-downward-24.06.1/builds/release/search/CMakeFiles/rebuild_cache.dir
