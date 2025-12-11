@@ -4,11 +4,9 @@ import genesis as gs
 from scenes import create_scene_adjacency
 from pddl_planner import plan_task, save_plan_to_file, load_plan_from_file
 from motion_action_primitives import move_while_closed, move_while_open, close_gripper, open_gripper
+from state_estimation import StateEstimation
 import os
-import math
-from scipy.spatial.transform import Rotation as R
-
-gripper_ee_offset = np.array([0.0027, 0.003, 0.04])
+GRIPPER_EE_OFFSET = np.array([0.00, 0.003, 0.04])
 
 def PICK(block, blocks_state, franka, scene):
     b = blocks_state[block]
@@ -16,11 +14,11 @@ def PICK(block, blocks_state, franka, scene):
     bpos = np.asarray(b.get_pos(), dtype=np.float64)
     # offset forward because actual gripper is behind the end effector link
     #move above block
-    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.2]) + gripper_ee_offset)
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.2]) + GRIPPER_EE_OFFSET, tolerance = .01)
     # #lower to block
-    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.07]) + gripper_ee_offset, tolerance=.008,attached_object=b,waypoints=70)
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.07]) + GRIPPER_EE_OFFSET, tolerance=.001,attached_object=b)
     # #move up - pass b as attached object
-    move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.3])+ gripper_ee_offset, attached_object=b, tolerance=.01,waypoints=100)
+    move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.3])+ GRIPPER_EE_OFFSET, attached_object=b, tolerance=.001)
 
 
 def PLACE(block, blocks_state, franka, scene):
@@ -29,13 +27,13 @@ def PLACE(block, blocks_state, franka, scene):
     bpos = np.asarray(b.get_pos(), dtype=np.float64)
 
     #move above block
-    move_while_closed(franka, scene, np.array([0.3, .3, 0.23]), attached_object=b, waypoints=70)
+    move_while_closed(franka, scene, np.array([0.4, .4, 0.2]), attached_object=b)
     # #lower next to block
-    move_while_closed(franka, scene,  np.array([.3, 0.3, 0.18]), attached_object=b,waypoints=70)
+    move_while_closed(franka, scene,  np.array([.4, 0.4, 0.14]), attached_object=b)
     # #release
     open_gripper(franka, scene)
     # #move up
-    move_while_open(franka, scene, bpos + np.array([0.3, .3, 0.3]),waypoints=70)
+    move_while_open(franka, scene, np.array([0.4, .4, 0.3]))
 
 def PLACEEAST(block1, block2, blocks_state, franka, scene):
     b1 = blocks_state[block1]
@@ -45,13 +43,22 @@ def PLACEEAST(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and east of block2, aligned with y axis
-    move_while_closed(franka, scene, b2pos + np.array([0, 0.043, 0.3]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1)
-    # #lower next to block2
-    move_while_closed(franka, scene, b2pos + np.array([0, 0.043, 0.13]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1,ignore_collisions=True)
-    # #release
+    move_while_closed(franka, scene, b2pos + np.array([0, 0.043, 0.2]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1)
+    for _ in range(10):
+        scene.step()
+    
+    # Calculate position correction based on current block position (x,y only)
+    b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
+    target_pos = b2pos + np.array([0, 0.043, 0])
+    diff = target_pos[:2] - b1pos[:2]  # Only x,y difference
+    des_pos = np.array([target_pos[0] + diff[0], target_pos[1] + diff[1], 0.14])
+    
+    # Lower next to block2 with correction
+    move_while_closed(franka, scene, des_pos, quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1, ignore_collisions=True)
+    # Release
     open_gripper(franka, scene)
-    # #move up
-    move_while_open(franka, scene, b2pos + np.array([0, 0.05, 0.3]),attached_object=b1)
+    # Move up
+    move_while_open(franka, scene, b2pos + np.array([0, 0.05, 0.3]), attached_object=b1)
 
 def PLACEWEST(block1, block2, blocks_state, franka, scene):
     b1 = blocks_state[block1]
@@ -61,12 +68,21 @@ def PLACEWEST(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and west of block2, aligned with y axis
-    move_while_closed(franka, scene, b2pos + np.array([0, -0.043, 0.3]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1)
-    # #lower next to block2
-    move_while_closed(franka, scene, b2pos + np.array([0, -0.043, 0.13]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1,ignore_collisions=True)
-    # #release
+    move_while_closed(franka, scene, b2pos + np.array([0, -0.043, 0.25]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1)
+    for _ in range(10):
+        scene.step()
+    
+    # Calculate position correction based on current block position (x,y only)
+    b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
+    target_pos = b2pos + np.array([0, -0.043, 0])
+    diff = target_pos[:2] - b1pos[:2]  # Only x,y difference
+    des_pos = np.array([target_pos[0] + diff[0], target_pos[1] + diff[1], 0.14])
+    
+    # Lower next to block2 with correction
+    move_while_closed(franka, scene, des_pos, quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1, ignore_collisions=True)
+    # Release
     open_gripper(franka, scene)
-    # #move up
+    # Move up
     move_while_open(franka, scene, b2pos + np.array([0, -.043, 0.3]))
 
 def PLACENORTH(block1, block2, blocks_state, franka, scene):
@@ -77,12 +93,21 @@ def PLACENORTH(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and north of block2, aligned with x axis
-    move_while_closed(franka, scene, b2pos + np.array([0.043, 0, 0.3]), attached_object=b1)
-    # #lower next to block2
-    move_while_closed(franka, scene, b2pos + np.array([0.043, 0, 0.13]), attached_object=b1,ignore_collisions=True)
-    # #release
+    move_while_closed(franka, scene, b2pos + np.array([0.043, 0, 0.25]), attached_object=b1)
+    for _ in range(10):
+        scene.step()
+    
+    # Calculate position correction based on current block position (x,y only)
+    b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
+    target_pos = b2pos + np.array([0.043, 0, 0])
+    diff = target_pos[:2] - b1pos[:2]  # Only x,y difference
+    des_pos = np.array([target_pos[0] + diff[0], target_pos[1] + diff[1], 0.14])
+    
+    # Lower next to block2 with correction
+    move_while_closed(franka, scene, des_pos, attached_object=b1, ignore_collisions=True)
+    # Release
     open_gripper(franka, scene)
-    # #move up
+    # Move up
     move_while_open(franka, scene, b2pos + np.array([0.043, 0, 0.3]))
 
 def PLACESOUTH(block1, block2, blocks_state, franka, scene):
@@ -93,12 +118,21 @@ def PLACESOUTH(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and south of block2, aligned with x axis
-    move_while_closed(franka, scene, b2pos + np.array([-0.043, 0, 0.3]), attached_object=b1)
-    # #lower next to block2
-    move_while_closed(franka, scene, b2pos + np.array([-0.043, 0, 0.13]), attached_object=b1,ignore_collisions=True)
-    # #release
+    move_while_closed(franka, scene, b2pos + np.array([-0.043, 0, 0.25]), attached_object=b1)
+    for _ in range(10):
+        scene.step()
+    
+    # Calculate position correction based on current block position (x,y only)
+    b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
+    target_pos = b2pos + np.array([-0.043, 0, 0])
+    diff = target_pos[:2] - b1pos[:2]  # Only x,y difference
+    des_pos = np.array([target_pos[0] + diff[0], target_pos[1] + diff[1], 0.14])
+    
+    # Lower next to block2 with correction
+    move_while_closed(franka, scene, des_pos, attached_object=b1, ignore_collisions=True)
+    # Release
     open_gripper(franka, scene)
-    # #move up
+    # Move up
     move_while_open(franka, scene, b2pos + np.array([-.043, 0, 0.3]), attached_object=b1)
 
 def PLACELONGDIAG(block1, block2, blocks_state, franka, scene):
@@ -109,198 +143,130 @@ def PLACELONGDIAG(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and at long diagonal of block2
-    move_while_closed(franka, scene, b2pos + np.array([0.088, 0.088, 0.23]), attached_object=b1,waypoints=200)
-    # #lower next to block2
-    move_while_closed(franka, scene, b2pos + np.array([0.088, 0.088, 0.13]), attached_object=b1,waypoints=100,ignore_collisions=True)
-    # #release
+    move_while_closed(franka, scene, b2pos + np.array([0.088, 0.088, 0.25]), attached_object=b1)
+    for _ in range(10):
+        scene.step()
+    
+    # Calculate position correction based on current block position (x,y only)
+    b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
+    target_pos = b2pos + np.array([0.088, 0.088, 0])
+    diff = target_pos[:2] - b1pos[:2]  # Only x,y difference
+    des_pos = np.array([target_pos[0] + diff[0], target_pos[1] + diff[1], 0.14])
+    
+    # Lower next to block2 with correction
+    move_while_closed(franka, scene, des_pos, attached_object=b1)
+    # Release
     open_gripper(franka, scene)
-    # #move up
-    move_while_open(franka, scene, b2pos + np.array([0.088, 0.088, 0.3]),attached_object=b1,waypoints=50)
+    # Move up
+    move_while_open(franka, scene, b2pos + np.array([0.088, 0.088, 0.3]), attached_object=b1)
 
 
-# TODO Added for testing
-# ---------------------------
-def PLACE_SPECIFIC(block, position, blocks_state, franka, scene):
-    print("Place_Specific")
-    b = blocks_state[block]
-    # Convert Genesis positions to proper numpy arrays
-    # bpos = np.asarray(b.get_pos(), dtype=np.float64)
-
-    #move above target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.30]), attached_object=b)
-    # #lower to target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.13]), attached_object=b, ignore_collisions=True)
-    # #release
-    open_gripper(franka, scene)
-    # #move up
-    move_while_open(franka, scene, position + np.array([0, 0, 0.3]))
-
-def PLACE_SPECIFIC_ORIENTED(block, position, quat, blocks_state, franka, scene):
-    print("Place_Specific_Oriented")
-    b = blocks_state[block]
-    # Convert Genesis positions to proper numpy arrays
-    # bpos = np.asarray(b.get_pos(), dtype=np.float64)
-
-    #move above target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.30]), quat, attached_object=b,waypoints=200)
-    # #lower to target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.13]), quat, attached_object=b, ignore_collisions=True, waypoints = 100)
-    # #release
-    open_gripper(franka, scene)
-    # #move up
-    move_while_open(franka, scene, position + np.array([0, 0, 0.3]))
-
-# ---------------------------
-
-def execute_pddl_plan(plan_file, domain_file, problem_file, blocks_state, franka, scene):
+def execute_action(action_str, blocks_state, franka, scene):
     """
-    Execute a PDDL plan by loading from file if it exists, or computing and saving it.
+    Execute a single PDDL action for adjacency task.
     
     Parameters:
-        plan_file: Path to the JSON file for the plan
-        domain_file: Path to the PDDL domain file (used if plan needs to be computed)
-        problem_file: Path to the PDDL problem file (used if plan needs to be computed)
+        action_str: Action string (e.g., "(pick b1)" or "(placeNorth b1 b2)")
         blocks_state: Dictionary mapping block names to block entities
         franka: Robot adapter
         scene: Genesis scene
+    
+    Returns:
+        dict with 'success' key indicating if action executed successfully
     """
-    # Check if plan file exists
-    if os.path.exists(plan_file):
-        print(f"Loading precomputed plan from {plan_file}")
-        solution = load_plan_from_file(plan_file)
-    else:
-        print(f"Plan file not found. Computing plan and saving to {plan_file}")
-        solution = plan_task(domain_file, problem_file)
-        if solution:
-            save_plan_to_file(solution, plan_file)
-        else:
-            print("ERROR: No solution found!")
-            return False
+    # Parse action string
+    parts = action_str.replace('(', '').replace(')', '').split()
+    action_name = parts[0].lower()
     
-    if not solution:
-        print("ERROR: No solution found!")
-        return False
+    print(f"Executing: {action_str}")
     
-    # Execute each action in the plan
-    for i, action in enumerate(solution, 1):
-        action_str = str(action)
-        
-        # Parse action string (format: "action_name block1 [block2]")
-        # Remove all parentheses and split by whitespace
-        parts = action_str.replace('(', '').replace(')', '').split()
-        action_name = parts[0].lower()
-        
+    try:
         if action_name == "pick":
-            # pick block
-            print("PICK %s" % parts[1])
-            block = parts[1]
-            PICK(block, blocks_state, franka, scene)
-            
+            PICK(parts[1], blocks_state, franka, scene)
         elif action_name == "place":
-            # place block
-            print("PLACE %s" % parts[1])
-            block = parts[1]
-
-            ## TODO edited for testing
-            # ---------------------------
-            # pos = np.array([0.3, 0.3, 0.0]) # actual starting position of pattern
-            theta_r = 0
-            r = ((0.025/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
-            pos = np.array([0.3+r*math.cos(theta_r), 0.3+r*math.sin(theta_r), 0.0])
-            # pos = np.array([0.66, -0.4, 0.0])
-            print("pos output from place: ",pos)
-            quat = np.array(R.from_euler('xz', [math.pi,theta_r]).as_quat(scalar_first=True))
-
-            PLACE_SPECIFIC_ORIENTED(block, pos, quat, blocks_state, franka, scene)
-
-            # ---------------------------
-
-            
+            PLACE(parts[1], blocks_state, franka, scene)
         elif action_name == "placenorth":
-            # placeNorth block1 block2
-            print("PLACENORTH %s %s" % (parts[1], parts[2]))
-            block1 = parts[1]
-            block2 = parts[2]
-            ## TODO edited for testing
-            # ---------------------------
-
-            theta_r = 0
-            quat = np.array(R.from_euler('xz', [math.pi,theta_r]).as_quat(scalar_first=True))
-            b2 = blocks_state[block2]
-            b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
-            pos = b2pos + np.array([0.043, 0.0, 0.0])
-
-            PLACE_SPECIFIC_ORIENTED(block1, pos, quat, blocks_state, franka, scene)
-
-            # ---------------------------            
+            PLACENORTH(parts[1], parts[2], blocks_state, franka, scene)
         elif action_name == "placeeast":
-            # placeEast block1 block2
-            print("PLACEEAST %s %s" % (parts[1], parts[2]))
-            block1 = parts[1]
-            block2 = parts[2]
-            ## TODO edited for testing
-            # ---------------------------
-
-            theta_r = 0
-            quat = np.array(R.from_euler('xz', [math.pi,theta_r]).as_quat(scalar_first=True))
-            b2 = blocks_state[block2]
-            b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
-            pos = b2pos + np.array([0, 0.043, 0.0])
-
-            PLACE_SPECIFIC_ORIENTED(block1, pos, quat, blocks_state, franka, scene)
-
-            # ---------------------------            
+            PLACEEAST(parts[1], parts[2], blocks_state, franka, scene)
         elif action_name == "placesouth":
-            # placeSouth block1 block2
-            print("PLACESOUTH %s %s" % (parts[1], parts[2]))
-            block1 = parts[1]
-            block2 = parts[2]
-            ## TODO edited for testing
-            # ---------------------------
-
-
-            theta_r = 0
-            quat = np.array(R.from_euler('xz', [math.pi,theta_r]).as_quat(scalar_first=True))
-            b2 = blocks_state[block2]
-            b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
-            pos = b2pos + np.array([-0.043, 0.0, 0.0])
-
-            PLACE_SPECIFIC_ORIENTED(block1, pos, quat, blocks_state, franka, scene)
-
-            # ---------------------------            
+            PLACESOUTH(parts[1], parts[2], blocks_state, franka, scene)
         elif action_name == "placewest":
-            # placeWest block1 block2
-            print("PLACEWEST %s %s" % (parts[1], parts[2]))
-            block1 = parts[1]
-            block2 = parts[2]
-            ## TODO edited for testing
-            # ---------------------------
-
-            theta_r = 0
-            quat = np.array(R.from_euler('xz', [math.pi,theta_r]).as_quat(scalar_first=True))
-
-
-            b2 = blocks_state[block2]
-            b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
-            pos = b2pos + np.array([0, -0.043, 0.0])
-
-            PLACE_SPECIFIC_ORIENTED(block1, pos, quat, blocks_state, franka, scene)
-
-            # ---------------------------
-
-            
+            PLACEWEST(parts[1], parts[2], blocks_state, franka, scene)
         elif action_name == "placelongdiag":
-            # placeLongDiag block1 block2
-            block1 = parts[1]
-            block2 = parts[2]
-            print("PLACELONGDIAG %s %s" % (block1, block2))
-            PLACELONGDIAG(block1, block2, blocks_state, franka, scene)
-
-            
+            PLACELONGDIAG(parts[1], parts[2], blocks_state, franka, scene)
         else:
             print(f"ERROR: Unknown action: {action_name}")
+            return {'success': False}
+        
+        return {'success': True}
+        
+    except Exception as e:
+        print(f"✗ Action failed: {action_str}")
+        print(f"   Error: {e}")
+        return {'success': False}
+
+
+def execute_with_replanning(domain_file, blocks_state, franka, scene, max_iterations=50):
+    """
+    Execute adjacency task with replanning at every step.
     
-    return True
+    Parameters:
+        domain_file: Path to the PDDL domain file
+        blocks_state: Dictionary mapping block names to block entities
+        franka: Robot adapter
+        scene: Genesis scene
+        max_iterations: Maximum number of actions to execute (safety limit)
+    
+    Returns:
+        True if goal was achieved, False otherwise
+    """
+    estimator = StateEstimation("adjacency")
+    
+    # Initialize block info once
+    estimator.set_scene_info(franka, blocks_state)
+    
+    iteration = 0
+    
+    while iteration < max_iterations:
+        iteration += 1
+        
+        print(f"\nReplanning (iteration {iteration})...")
+        
+        # Replan from current state (always replan since no state update functions)
+        plan = estimator.replan_from_current_state(franka, blocks_state, domain_file)
+        
+        # Check planner result
+        if plan is None:
+            print("\n✗ Planner failed to find a solution")
+            return False
+        elif len(plan) == 0:
+            print("\nGoal achieved!")
+            return True
+        else:
+            print(f"Plan generated with {len(plan)} actions")
+        
+        # Execute first action from plan
+        action = plan[0]
+        result = execute_action(action, blocks_state, franka, scene)
+        
+        if not result['success']:
+            print("\nAction execution failed")
+            return False
+        
+        # Wait for scene to settle
+        for _ in range(10):
+            scene.step()
+        
+        # Update and print current state
+        estimator.set_scene_info(franka, blocks_state)
+        current_state = estimator.parse_state_to_pddl()
+        print("\nCurrent estimated state:")
+        for fact in current_state:
+            print(f"  {fact}")
+    
+    print(f"\nMaximum iterations ({max_iterations}) reached")
+    return False
 
 
 def main():
@@ -333,8 +299,20 @@ def main():
         np.array([-87, -87, -87, -87, -12, -12, -12, -100, -100]),
         np.array([87, 87, 87, 87, 12, 12, 12, 100, 100]),
     )
-    # Execute PDDL plan for adjacency problem
-    execute_pddl_plan('adjacency_plan.json', 'adjacency_task.pddl', 'adjacency_problem.pddl', BlocksState, franka, scene)
+    
+    # Execute with replanning at every step
+    success = execute_with_replanning(
+        domain_file='adjacency/adjacency_task.pddl',
+        blocks_state=BlocksState,
+        franka=franka,
+        scene=scene,
+        max_iterations=50
+    )
+    
+    if success:
+        print("\nTask completed successfully!")
+    else:
+        print("\nTask failed to complete")
 
 
 if __name__ == "__main__":

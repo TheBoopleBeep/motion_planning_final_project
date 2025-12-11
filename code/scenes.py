@@ -261,6 +261,103 @@ def create_scene_10blocks() -> Tuple[Any, Any, Dict[str, Any], Any]:
     return scene, franka, blocks_state
 
 
+def create_scene_10blocks() -> Tuple[Any, Any, Dict[str, Any], Any]:
+    """Create scene with 10 blocks.
+
+    Returns:
+        scene, franka_adapter, blocks_state, end_effector
+    """
+    scene = _build_base_scene()
+
+    # basic geometry
+    plane = scene.add_entity(gs.morphs.Plane())
+    # add some random noise up to 5 cm in x/y
+
+    posR = np.array([.3,  -.4 , 0.02])
+    posG = np.array([.5, -.1, 0.02])
+    posB = np.array([.6, .1 , 0.02])
+    posY = np.array([.4, .1 , 0.02])
+    posM = np.array([.4, .2 , 0.02])
+    posC = np.array([.5, -.2 , 0.02])
+    posO = np.array([.4, -.2 , 0.02])
+    posP = np.array([.5, 0.2 , 0.02])
+    posK = np.array([.4, 0 , 0.02])
+    posS = np.array([.4, -.10 , 0.02])
+    posL = np.array([.5, 0 , 0.02])
+    posN = np.array([.6, 0 , 0.02])
+    posBB = np.array([.6, 0.2 , 0.02])
+
+    cubeR = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos= posR),
+        surface=gs.options.surfaces.Plastic(color=(1.0, 0.0, 0.0)),
+    )
+    cubeG = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos= posG),
+        surface=gs.options.surfaces.Plastic(color=(0.0, 1.0, 0.0)),
+    )
+    cubeB = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos= posB),
+        surface=gs.options.surfaces.Plastic(color=(0.0, 0.0, 1.0)),
+    )
+    cubeY = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posY),
+        surface=gs.options.surfaces.Plastic(color=(1.0, 1.0, 0.0)),
+    )
+    cubeM = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posM),
+        surface=gs.options.surfaces.Plastic(color=(1.0, 0, 1.0)),
+    )
+    cubeC = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posC),
+        surface=gs.options.surfaces.Plastic(color=(0, 1.0, 1.0)),
+    )
+    cubeO = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posO),
+        surface=gs.options.surfaces.Plastic(color=(1.0, 0.5, 0.0)),
+    )
+    cubeP = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posP),
+        surface=gs.options.surfaces.Plastic(color=(0.5, 0.0, 0.5)),
+    )
+    cubeK = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posK),
+        surface=gs.options.surfaces.Plastic(color=(0.1, 0.1, 0.1)),
+    )
+    cubeS = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posS),
+        surface=gs.options.surfaces.Plastic(color=(0.75, 0.75, 0.75)),
+    )
+    cubeL = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posL),
+        surface=gs.options.surfaces.Plastic(color=(0.75, 1, 0.75)),
+    )
+    cubeN = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posN),
+        surface=gs.options.surfaces.Plastic(color=(0.5, 0, 0)),
+    )
+    cubeBB = scene.add_entity(
+        gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=posBB),
+        surface=gs.options.surfaces.Plastic(color=(0.9, .6, 0.6)),
+    )
+
+
+    franka_raw = scene.add_entity(gs.morphs.MJCF(file="xml/franka_emika_panda/panda.xml"))
+    franka = RobotAdapter(franka_raw, scene)
+
+    # build scene (construct physics/visuals)
+    scene.build()
+
+    # initial robot pose (7 arm joints + 2 gripper fingers)
+    franka.set_qpos(np.array([0.0, -0.5, -0.2, -1.0, 0.0, 1.00, 0.5, 0.02, 0.02]))
+
+    # slightly raise robot base to avoid initial collisions
+    _elevate_robot_base(franka)
+
+    blocks_state: Dict[str, Any] = {"r": cubeR, "g": cubeG, "b": cubeB, "y": cubeY, "m": cubeM, "c": cubeC, "o": cubeO, "p": cubeP, "k": cubeK, "s": cubeS, "l":cubeL, "n" : cubeN, "bb": cubeBB}
+
+    return scene, franka, blocks_state
+
+
 def create_scene_stacked() -> Tuple[Any, Any, Dict[str, Any], Any]:
     """Create an alternative demo scene (layout 2) with cube positions. one on top of the other."""
     scene = _build_base_scene(camera_pos=(2.5, -1.2, 1.2), camera_lookat=(0.6, 0.0, 0.2))
@@ -315,11 +412,11 @@ def create_scene_adjacency() -> Tuple[Any, Any, Dict[str, Any], Any]:
     plane = scene.add_entity(gs.morphs.Plane())
 
     # slightly different positions
-    pos1 = np.array([.3,  0 , 0.02])
-    pos2 = np.array([.45, .0, 0.02])
-    pos3 = np.array([.6, .0 , 0.02])
-    pos4 = np.array([.3, -.2 , 0.02])
-    pos5 = np.array([.45, -.2 , 0.02])
+    pos1 = np.array([.4,  0.1 , 0.02])
+    pos2 = np.array([.5, .1, 0.02])
+    pos3 = np.array([.6, .1 , 0.02])
+    pos4 = np.array([.4, -.2 , 0.02])
+    pos5 = np.array([.5, -.2 , 0.02])
     pos6 = np.array([.6, -.2 , 0.02])
     cube1 = scene.add_entity(
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos1),

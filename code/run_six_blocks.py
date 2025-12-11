@@ -149,7 +149,7 @@ def main():
     )
 
     # Execute PDDL plan (compute if needed, otherwise load from file)
-    execute_pddl_plan('6_block_plan.json', '6_block_domain.pddl', '6_block_problem.pddl', BlocksState, franka, scene)
+    execute_pddl_plan('six_blocks/6_block_plan.json', 'six_blocks/6_block_domain.pddl', 'six_blocks/6_block_problem.pddl', BlocksState, franka, scene)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,12 @@
+[
+  "(pick g)\n  PRE: (handempty)\n  PRE: (clear g)\n  PRE: (ontable g)\n  ADD: (holding g)\n  DEL: (handempty)\n  DEL: (clear g)\n  DEL: (ontable g)\n",
+  "(stack g r)\n  PRE: (holding g)\n  PRE: (clear r)\n  ADD: (handempty)\n  ADD: (on g r)\n  ADD: (clear g)\n  DEL: (holding g)\n  DEL: (clear r)\n",
+  "(pick b)\n  PRE: (ontable b)\n  PRE: (handempty)\n  PRE: (clear b)\n  ADD: (holding b)\n  DEL: (handempty)\n  DEL: (ontable b)\n  DEL: (clear b)\n",
+  "(stack b g)\n  PRE: (clear g)\n  PRE: (holding b)\n  ADD: (handempty)\n  ADD: (on b g)\n  ADD: (clear b)\n  DEL: (clear g)\n  DEL: (holding b)\n",
+  "(pick y)\n  PRE: (handempty)\n  PRE: (ontable y)\n  PRE: (clear y)\n  ADD: (holding y)\n  DEL: (handempty)\n  DEL: (clear y)\n  DEL: (ontable y)\n",
+  "(stack y b)\n  PRE: (clear b)\n  PRE: (holding y)\n  ADD: (handempty)\n  ADD: (clear y)\n  ADD: (on y b)\n  DEL: (clear b)\n  DEL: (holding y)\n",
+  "(pick m)\n  PRE: (handempty)\n  PRE: (ontable m)\n  PRE: (clear m)\n  ADD: (holding m)\n  DEL: (handempty)\n  DEL: (ontable m)\n  DEL: (clear m)\n",
+  "(stack m y)\n  PRE: (clear y)\n  PRE: (holding m)\n  ADD: (handempty)\n  ADD: (on m y)\n  ADD: (clear m)\n  DEL: (clear y)\n  DEL: (holding m)\n",
+  "(pick c)\n  PRE: (handempty)\n  PRE: (clear c)\n  PRE: (ontable c)\n  ADD: (holding c)\n  DEL: (handempty)\n  DEL: (clear c)\n  DEL: (ontable c)\n",
+  "(stack c m)\n  PRE: (holding c)\n  PRE: (clear m)\n  ADD: (handempty)\n  ADD: (clear c)\n  ADD: (on c m)\n  DEL: (holding c)\n  DEL: (clear m)\n"
+]

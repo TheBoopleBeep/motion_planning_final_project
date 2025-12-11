@@ -1,32 +1,57 @@
 import genesis as gs
 import numpy as np
 import torch
-from typing import Any
+from typing import Any, Optional, List
 
 from genesis.utils.misc import tensor_to_array
 from robot_adapter import RobotAdapter
 
 
 def _ensure_adapter(robot: Any, scene: Any) -> RobotAdapter:
-    """Wrap raw genesis robot in RobotAdapter if needed.
-
+    """
+    Wrap raw Genesis robot in RobotAdapter if needed.
+    
     This keeps PlannerInterface backward-compatible with callers that may
-    still pass the raw genesis entity.
+    still pass the raw Genesis entity.
+    
+    Parameters:
+        robot: Robot entity (RobotAdapter or raw Genesis robot)
+        scene: Genesis scene
+    
+    Returns:
+        RobotAdapter instance
     """
     if isinstance(robot, RobotAdapter):
         return robot
     return RobotAdapter(robot, scene)
 
 class PlannerInterface:
+    """
+    Interface for OMPL-based motion planning with Genesis robots.
+    """
+    
     def __init__(self, robot: Any, scene: Any):
-        # ensure we have a RobotAdapter so the rest of the code can rely on a
-        # stable interface (but attribute access is forwarded to the raw robot)
+        """
+        Initialize planner interface.
+        
+        Parameters:
+            robot: Robot entity (RobotAdapter or raw Genesis robot)
+            scene: Genesis scene
+        """
+        # Ensure we have a RobotAdapter for stable interface
         self.robot = _ensure_adapter(robot, scene)
         self.scene = scene
         self.attached_object = None
+        self.ignore_collisions = False
 
     def diagnose_bounds_violation(self, si, state):
-        # print the bounds the current state is violating
+        """
+        Diagnose which joints violate bounds in the given state.
+        
+        Parameters:
+            si: OMPL SpaceInformation object
+            state: OMPL state to check
+        """
         violated_bounds = []
         for i_q in range(self.robot.n_qs):
             val = state[i_q]
@@ -37,17 +62,18 @@ class PlannerInterface:
         gs.logger.warning(f"State violates bounds on joints: {violated_bounds}")
 
     def diagnose_valid_violation(self, state):
-        # set robot to the candidate start and check collisions / joint violations
+        """
+        Diagnose collision violations for the given state.
+        
+        Parameters:
+            state: OMPL state to check
+        """
         self.robot.set_qpos(self._ompl_state_to_tensor(state))
-        print(self.robot.get_qpos())
         collision_pairs = self.robot.detect_collision()
+        
         if collision_pairs.any() and len(collision_pairs) > 0:
             bad_links = set()
             for a, b in collision_pairs:
-                # print(self.scene.rigid_solver.geoms[a])
-                print(self.scene.rigid_solver.geoms[a].link.name)
-                # print(self.scene.rigid_solver.geoms[b])
-                print(self.scene.rigid_solver.geoms[b].link.name)
                 bad_links.add(self.scene.rigid_solver.geoms[a].link.name)
                 bad_links.add(self.scene.rigid_solver.geoms[b].link.name)
             gs.logger.warning(f"State causes collisions between links: {sorted(bad_links)}")
@@ -63,72 +89,53 @@ class PlannerInterface:
             planner="RRTConnect",
             goal_tolerance=0.0005,
             ignore_collisions=False,
+            waypoint_scale=0.75,
     ):
         """
         Plan a path from `qpos_start` to `qpos_goal`.
 
-        Parameters
-        ----------
-        qpos_goal : array_like
-            The goal state.
-        qpos_start : None | array_like, optional
-            The start state. If None, the current state of the rigid entity will be used. Defaults to None.
-        timeout : float, optional
-            The maximum time (in seconds) allowed for the motion planning algorithm to find a solution. Defaults to 5.0.
-        smooth_path : bool, optional
-            Whether to smooth the path after finding a solution. Defaults to True.
-        num_waypoints : int, optional
-            The number of waypoints to interpolate the path. If None, no interpolation will be performed. Defaults to 100.
-        ignore_collision : bool, optional
-            Whether to ignore collision checking during motion planning. Defaults to False.
-        ignore_joint_limit : bool, optional
-            Whether to ignore joint limits during motion planning. Defaults to False.
-        planner : str, optional
-            The name of the motion planning algorithm to use. Supported planners: 'PRM', 'RRT', 'RRTConnect', 'RRTstar', 'EST', 'FMT', 'BITstar', 'ABITstar'. Defaults to 'RRTConnect'.
-        goal_tolerance : float, optional
-            The distance threshold for considering a state as reaching the goal. A value of 0.0 requires exact goal matching. Defaults to 0.0.
-        ignore_collisions : bool, optional
-            Whether to ignore collision checking during motion planning. Defaults to False.
+        Parameters:
+            qpos_goal: Target joint configuration
+            qpos_start: Starting joint configuration (None = use current state)
+            timeout: Maximum planning time in seconds
+            smooth_path: Whether to smooth the path after finding solution
+            num_waypoints: Number of waypoints to interpolate (-1 = auto-calculate)
+            attached_object: Object held by gripper for collision checking
+            planner: OMPL planner name ('RRTConnect', 'BITstar', etc.)
+            goal_tolerance: Distance threshold for goal matching (0.0 = exact)
+            ignore_collisions: Whether to skip collision checking
+            waypoint_scale: Scaling factor for auto-calculated waypoints
 
-        Returns
-        -------
-        waypoints : list
-            A list of waypoints representing the planned path. Each waypoint is an array storing the entity's qpos of a single time step.
+        Returns:
+            List of waypoints (each is a joint configuration tensor)
         """
 
-        ########## validate ##########
+        # Validate and import OMPL
         try:
             from ompl import base as ob
             from ompl import geometric as og
             from ompl import util as ou
-
             ou.setLogLevel(ou.LOG_ERROR)
-        except:
+        except ImportError:
             gs.raise_exception(
-                    "Failed to import OMPL. Did you install? (For installation instructions, see https://genesis-world.readthedocs.io/en/latest/user_guide/overview/installation.html#optional-motion-planning)"
+                "Failed to import OMPL. Install instructions: "
+                "https://genesis-world.readthedocs.io/en/latest/user_guide/overview/installation.html#optional-motion-planning"
             )
 
-        supported_planners = [
-            "PRM",
-            "RRT",
-            "RRTConnect",
-            "RRTstar",
-            "EST",
-            "FMT",
-            "BITstar",
-            "ABITstar",
-        ]
+        supported_planners = ["PRM", "RRT", "RRTConnect", "RRTstar", "EST", "FMT", "BITstar", "ABITstar"]
         if planner not in supported_planners:
-            gs.raise_exception(f"Planner {planner} is not supported. Supported planners: {supported_planners}.")
+            gs.raise_exception(f"Planner '{planner}' not supported. Available: {supported_planners}")
 
         if self.robot._solver.n_envs > 0:
-            gs.raise_exception("Motion planning is not supported for batched envs (yet).")
+            gs.raise_exception("Motion planning not supported for batched environments")
 
         if self.robot.n_qs != self.robot.n_dofs:
-            gs.raise_exception("Motion planning is not yet supported for rigid entities with free joints.")
+            gs.raise_exception("Motion planning not supported for robots with free joints")
 
+        # Get current configuration for restoration later
         qpos_cur = self.robot.get_qpos()
 
+        # Process start and goal configurations
         if qpos_start is None:
             qpos_start = self.robot.get_qpos()
         qpos_start = tensor_to_array(qpos_start)
@@ -136,91 +143,102 @@ class PlannerInterface:
 
 
         if qpos_start.shape != (self.robot.n_qs,) or qpos_goal.shape != (self.robot.n_qs,):
-            gs.raise_exception("Invalid shape for `qpos_start` or `qpos_goal`.")
+            gs.raise_exception("Invalid shape for qpos_start or qpos_goal")
 
-        ######### process joint limit ##########
-
-        # ensure we use numpy float64 for bounds
+        # Process joint limits
         q_limit_lower = np.asarray(self.robot.q_limit[0], dtype=float)
         q_limit_upper = np.asarray(self.robot.q_limit[1], dtype=float)
         
-        # Clamp qpos values to stay within bounds (handles floating-point precision issues)
+        # Clamp to bounds (handles floating-point precision issues)
         qpos_start = np.clip(qpos_start, q_limit_lower, q_limit_upper)
         qpos_goal = np.clip(qpos_goal, q_limit_lower, q_limit_upper)
+        
+        # Auto-calculate waypoints if requested
+        if num_waypoints is None or num_waypoints == -1:
+            num_waypoints = self.calculate_waypoints_from_path_length(
+                qpos_start, qpos_goal, waypoint_scale=waypoint_scale
+            )
+            print(f"Auto-calculated waypoints: {num_waypoints}")
 
-        ######### setup OMPL ##########
+        # Setup OMPL
         space = ob.RealVectorStateSpace(self.robot.n_qs)
         bounds = ob.RealVectorBounds(self.robot.n_qs)
 
         for i_q in range(self.robot.n_qs):
-            # pass native Python float (double) to OMPL to match C++ signature
             bounds.setLow(i_q, float(q_limit_lower[i_q]))
             bounds.setHigh(i_q, float(q_limit_upper[i_q]))
         space.setBounds(bounds)
+        
         ss = og.SimpleSetup(space)
-
         self.attached_object = attached_object
         self.ignore_collisions = ignore_collisions
         
         ss.setStateValidityChecker(ob.StateValidityCheckerFn(self._is_ompl_state_valid))
         ss.setPlanner(getattr(og, planner)(ss.getSpaceInformation()))
 
+        # Create start and goal states
         state_start = ob.State(space)
         state_goal = ob.State(space)
         for i_q in range(self.robot.n_qs):
             state_start[i_q] = float(qpos_start[i_q])
             state_goal[i_q] = float(qpos_goal[i_q])
-        # Diagnostic: check start/goal satisfy bounds and are valid according to the state validity checker
+        
+        # Validate start and goal states
         si = ss.getSpaceInformation()
-        start_in_bounds = bool(si.satisfiesBounds(state_start.get()))
-        if not start_in_bounds:
-            gs.logger.warning(f"OMPL start state out of bounds")
+        if not si.satisfiesBounds(state_start.get()):
+            gs.logger.warning("Start state out of bounds")
             self.diagnose_bounds_violation(si, state_start.get())
 
-        goal_in_bounds = bool(si.satisfiesBounds(state_goal.get()))
-        if not goal_in_bounds:
-            gs.logger.warning(f"OMPL goal state out of bounds")
+        if not si.satisfiesBounds(state_goal.get()):
+            gs.logger.warning("Goal state out of bounds")
             self.diagnose_bounds_violation(si, state_goal)
 
-        start_valid = bool(si.isValid(state_start.get()))
-        if not start_valid:
-            gs.logger.warning(f"OMPL start state invalid")
+        if not si.isValid(state_start.get()):
+            gs.logger.warning("Start state invalid (collisions or constraints violated)")
             self.diagnose_valid_violation(state_start)
 
-        goal_valid = bool(si.isValid(state_goal.get()))
-        if not goal_valid:
-            gs.logger.warning(f"OMPL goal state invalid")
+        if not si.isValid(state_goal.get()):
+            gs.logger.warning("Goal state invalid (collisions or constraints violated)")
             self.diagnose_valid_violation(state_goal)
 
-        # set start/goal in OMPL
+        # Configure OMPL problem
         if goal_tolerance > 0.0:
             ss.setStartAndGoalStates(state_start, state_goal, goal_tolerance)
         else:
             ss.setStartAndGoalStates(state_start, state_goal)
         ss.setup()
 
-        ######### solve ##########
+        # Solve
         solved = ss.solve(timeout)
         waypoints = []
+        
         if solved:
-            gs.logger.info("Path solution found successfully.")
+            gs.logger.info("Path solution found")
             path = ss.getSolutionPath()
+            
             if smooth_path:
                 ss.simplifySolution()
 
             path.interpolate(num_waypoints)
-            print("Number of waypoints in path:", path.getStateCount())
+            print(f"Path contains {path.getStateCount()} waypoints")
             waypoints = self._ompl_states_to_tensor_list(path.getStates())
         else:
-            gs.logger.warning("Path planning failed. Returning empty path.")
+            gs.logger.warning("Path planning failed - returning empty path")
 
-        ########## restore original state #########
+        # Restore original configuration
         self.robot.set_qpos(qpos_cur)
-
         return waypoints
 
     def _is_ompl_state_valid(self, state):
-        # If ignoring collisions, always return True
+        """
+        Check if an OMPL state is valid (collision-free).
+        
+        Parameters:
+            state: OMPL state to validate
+        
+        Returns:
+            True if state is valid, False otherwise
+        """
         if self.ignore_collisions:
             return True
             
@@ -233,27 +251,92 @@ class PlannerInterface:
         if not self.attached_object:
             return False
 
-        return self.collision_with_attached_object(collision_pairs)
+        return self._is_collision_with_attached_object(collision_pairs)
 
-    def collision_with_attached_object(self, collision_pairs):
+    def _is_collision_with_attached_object(self, collision_pairs):
+        """
+        Check if collisions are acceptable (gripper holding attached object).
+        
+        Parameters:
+            collision_pairs: List of collision pairs to check
+        
+        Returns:
+            True if all collisions are gripper-to-attached-object, False otherwise
+        """
         finger_names = {"left_finger", "right_finger", "hand"}
+        
         for a, b in collision_pairs:
             name_a = self.scene.rigid_solver.geoms[a].link.name
             name_b = self.scene.rigid_solver.geoms[b].link.name
-            if (name_a in finger_names and b == self.attached_object.idx) or \
-                 (name_b in finger_names and a == self.attached_object.idx):
-                continue
-            return False
+            
+            # Allow collisions between gripper and attached object
+            gripper_to_object = (
+                (name_a in finger_names and b == self.attached_object.idx) or
+                (name_b in finger_names and a == self.attached_object.idx)
+            )
+            
+            if not gripper_to_object:
+                return False
+        
         return True
 
-    def _ompl_states_to_tensor_list(self, states):
-        tensor_list = []
-        for state in states:
-            tensor_list.append(self._ompl_state_to_tensor(state))
-        return tensor_list
+    def _ompl_states_to_tensor_list(self, states) -> List[torch.Tensor]:
+        """
+        Convert list of OMPL states to list of PyTorch tensors.
+        
+        Parameters:
+            states: List of OMPL states
+        
+        Returns:
+            List of tensor configurations
+        """
+        return [self._ompl_state_to_tensor(state) for state in states]
 
-    def _ompl_state_to_tensor(self, state):
+    def _ompl_state_to_tensor(self, state) -> torch.Tensor:
+        """
+        Convert single OMPL state to PyTorch tensor.
+        
+        Parameters:
+            state: OMPL state
+        
+        Returns:
+            Joint configuration tensor
+        """
         tensor = torch.empty(self.robot.n_qs, dtype=gs.tc_float, device=gs.device)
         for i in range(self.robot.n_qs):
             tensor[i] = state[i]
         return tensor
+
+    @staticmethod
+    def calculate_waypoints_from_path_length(
+        qpos_start,
+        qpos_goal,
+        waypoints_per_radian=50,
+        min_waypoints=30,
+        max_waypoints=500,
+        waypoint_scale=0.75
+    ):
+        """
+        Calculate appropriate number of waypoints based on joint-space path length.
+        
+        Parameters:
+            qpos_start: Starting joint configuration
+            qpos_goal: Goal joint configuration
+            waypoints_per_radian: Base number of waypoints per radian
+            min_waypoints: Minimum waypoints regardless of path length
+            max_waypoints: Maximum waypoints to prevent excessive computation
+            waypoint_scale: Scaling factor to adjust waypoint density
+            
+        Returns:
+            Calculated number of waypoints
+        """
+        # Calculate joint-space distance (L2 norm)
+        path_length = np.linalg.norm(np.array(qpos_goal) - np.array(qpos_start))
+        
+        # Calculate waypoints: path_length * waypoints_per_radian * scale
+        num_waypoints = int(path_length * waypoints_per_radian * waypoint_scale)
+        
+        # Clamp to bounds
+        num_waypoints = max(min_waypoints, min(num_waypoints, max_waypoints))
+        
+        return num_waypoints
