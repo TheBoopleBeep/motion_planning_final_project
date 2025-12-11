@@ -143,10 +143,10 @@ def PLACE_SPECIFIC_ORIENTED(block, blocks_state, franka, scene):
     print("Place_Specific_Oriented")
     b = blocks_state[block]
 
-    r = ((0.025/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
+    r = ((0.04/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
     theta_block = 0
-    position = np.array([0.3+r*math.cos(theta_block), 0.3+r*math.sin(theta_block), 0.0]),
-    quat = np.array(R.from_euler('xyz', [math.pi,0.0,theta_block]).as_quat(scalar_first=True)),
+    position = np.array([0.3+r*math.cos(theta_block), 0.3+r*math.sin(theta_block), 0.0])
+    quat = np.array(R.from_euler('xyz', [math.pi,0.0,theta_block]).as_quat(scalar_first=True))
 
 
     #move above target position
@@ -183,7 +183,7 @@ def PLACE_RELATIVE_ORIENTED(block1, block2, blocks_state, franka, scene):
 
     open_gripper(franka, scene)
 
-def STACK_RELATIVE_ORIENTED(block1, block2, block3, position, quat, blocks_state, franka, scene):
+def STACK_RELATIVE_ORIENTED(block1, block2, blocks_state, franka, scene):
     print("Place_Specific_Oriented")
     place_b = blocks_state[block1]
     ref_b = blocks_state[block2]
@@ -290,71 +290,49 @@ def compute_relative(ref_block_state, stack=False):
     return [target_position, target_quat]
 
 
-def execute_action(action_str, blocks_state, franka, scene, estimator=None, verify_state=False):
+def execute_action(action_str, blocks_state, franka, scene):
     """
-    Execute a single PDDL action with optional state verification.
+    Execute a single PDDL action for adjacency task.
     
     Parameters:
-        action_str: Action string (e.g., "(pick r)" or "(stack g r)")
+        action_str: Action string (e.g., "(pick b1)" or "(placeNorth b1 b2)")
         blocks_state: Dictionary mapping block names to block entities
         franka: Robot adapter
         scene: Genesis scene
-        estimator: Optional StateEstimation object for state verification
-        verify_state: Whether to verify state matches predicted state
     
     Returns:
-        dict with keys:
-            - 'success': bool indicating if action executed successfully
-            - 'state_comparison': dict with comparison results or None
+        dict with 'success' key indicating if action executed successfully
     """
     # Parse action string
     parts = action_str.replace('(', '').replace(')', '').split()
-    action_name = parts[0]
+    action_name = parts[0].lower()
     
     print(f"Executing: {action_str}")
     
-    # Compute predicted state for verification
-    predicted_facts = None
-    if verify_state and estimator is not None:
-        current_facts = set(estimator.parse_state_to_pddl())
-        
-        if action_name == "pick":
-            predicted_facts = estimator.comp_PICK(parts[1], current_facts)
-        elif action_name == "stack":
-            predicted_facts = estimator.comp_STACK(parts[1], parts[2], current_facts)
-        elif action_name == "unstack":
-            predicted_facts = estimator.comp_PICK(parts[1], current_facts)
-    
     try:
-        # Execute the appropriate action
         if action_name == "pick":
             PICK(parts[1], blocks_state, franka, scene)
-        elif action_name == "stack":
-            STACK(parts[1], parts[2], blocks_state, franka, scene)
-        elif action_name == "unstack":
-            PICK(parts[1], blocks_state, franka, scene)
-        elif action_name == "place":
-            PLACE(parts[1], blocks_state, franka, scene)
+        elif action_name == "place_specific_oriented":
+            PLACE_SPECIFIC_ORIENTED(parts[1], blocks_state, franka, scene)
+        elif action_name == "place_relative_oriented":
+            PLACE_RELATIVE_ORIENTED(parts[1], parts[2], blocks_state, franka, scene)
+        elif action_name == "stack_relative_oriented":
+            STACK_RELATIVE_ORIENTED(parts[1], parts[2], blocks_state, franka, scene)
         else:
             print(f"ERROR: Unknown action: {action_name}")
-            return {'success': False, 'state_comparison': None}
+            return {'success': False}
         
-        # Verify state if requested
-        state_comparison = None
-        if verify_state and estimator is not None and predicted_facts is not None:
-            state_comparison = estimator.compare_states(predicted_facts, franka, blocks_state)
-        
-        return {'success': True, 'state_comparison': state_comparison}
+        return {'success': True}
         
     except Exception as e:
         print(f"✗ Action failed: {action_str}")
         print(f"   Error: {e}")
-        return {'success': False, 'state_comparison': None}
+        return {'success': False}
 
 
-def execute_with_replanning(domain_file, blocks_state, franka, scene, max_iterations=100):
+def execute_with_replanning(domain_file, blocks_state, franka, scene, max_iterations=50):
     """
-    Execute a task with replanning only when state mismatches are detected.
+    Execute adjacency task with replanning at every step.
     
     Parameters:
         domain_file: Path to the PDDL domain file
@@ -366,57 +344,49 @@ def execute_with_replanning(domain_file, blocks_state, franka, scene, max_iterat
     Returns:
         True if goal was achieved, False otherwise
     """
-
-
-    estimator = StateEstimation("tower")
+    estimator = StateEstimation("special_tower")
     
     # Initialize block info once
     estimator.set_scene_info(franka, blocks_state)
     
     iteration = 0
-    plan = None  # Current plan
-    plan_index = 0  # Track position in current plan
-    need_replan = True  # Flag to trigger replanning
     
     while iteration < max_iterations:
         iteration += 1
         
-        # Replan only if needed (first iteration, state mismatch, or action failure)
-        if need_replan:
-            print(f"\nReplanning (iteration {iteration})...")
-            
-            # Replan (this internally updates all state)
-            plan = estimator.replan_from_current_state(franka, blocks_state, domain_file)
-            plan_index = 0  # Reset to start of new plan
-            need_replan = False  # Reset flag
-            
-            # Check planner result
-            if plan is None:
-                print("\nPlanner failed to find a solution")
-                return False
-            elif len(plan) == 0:
-                print("\nGoal achieved!")
-                return True
-            else:
-                print(f"Plan generated with {len(plan)} actions")
+        print(f"\nReplanning (iteration {iteration})...")
         
-        # Execute next action with state verification
-        action = plan[plan_index]
-        result = execute_action(action, blocks_state, franka, scene, estimator=estimator, verify_state=True)
+        # Replan from current state (always replan since no state update functions)
+        plan = estimator.replan_from_current_state(franka, blocks_state, domain_file)
         
-        # Determine if replanning is needed
-        if not result['success']:
-            need_replan = True
-        elif result['state_comparison'] and not result['state_comparison']['matches']:
-            need_replan = True
+        # Check planner result
+        if plan is None:
+            print("\n✗ Planner failed to find a solution")
+            return False
+        elif len(plan) == 0:
+            print("\nGoal achieved!")
+            return True
         else:
-            plan_index += 1
-            if plan_index >= len(plan):
-                need_replan = True
+            print(f"Plan generated with {len(plan)} actions")
         
-        # Wait a bit for the scene to settle
+        # Execute first action from plan
+        action = plan[0]
+        result = execute_action(action, blocks_state, franka, scene)
+        
+        if not result['success']:
+            print("\nAction execution failed")
+            return False
+        
+        # Wait for scene to settle
         for _ in range(10):
             scene.step()
+        
+        # Update and print current state
+        estimator.set_scene_info(franka, blocks_state)
+        current_state = estimator.parse_state_to_pddl()
+        print("\nCurrent estimated state:")
+        for fact in current_state:
+            print(f"  {fact}")
     
     print(f"\nMaximum iterations ({max_iterations}) reached")
     return False
@@ -433,7 +403,7 @@ def replan_tower(franka, blocks_state, domain_file, output_problem_file=None):
         output_problem_file: Optional path to save the generated problem file
                             If None, a temporary file will be created and deleted
     
-    Returns:
+    Returns:blocks_state, fr
         List of action strings representing the new plan, or None if no solution found
         
     Example usage:
@@ -446,7 +416,7 @@ def replan_tower(franka, blocks_state, domain_file, output_problem_file=None):
     block_names = list(blocks_state.keys())
     
     # Initialize state estimator
-    estimator = StateEstimation("tower")
+    estimator = StateEstimation("special_tower")
     
     # Set initial scene information
     estimator.set_scene_info(franka, blocks_state)
@@ -474,7 +444,7 @@ def main():
         gs.init(backend=gs.cpu, logging_level='Warning', logger_verbose_time=False)
 
     # Build scene with blocks and robot
-    scene, franka, BlocksState = create_scene_10blocks()
+    scene, franka, BlocksState = create_scene_special_tower()
 
     # Configure robot control parameters (tuned for Franka Panda)
 

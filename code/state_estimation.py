@@ -4,7 +4,8 @@ import genesis
 import os
 import tempfile
 from fast_downward_planner import plan_task, plan_task_from_string
-
+from scipy.spatial.transform import Rotation as R
+import math
 
 @dataclass
 class GripperState:
@@ -41,10 +42,14 @@ class adjacentCube:
 
 @dataclass
 class specialCube:
-    """Representation of a block in special tasks."""
+    """Representation of a block in the special tower task."""
     name: str
     position: np.ndarray
-    ### Whatever else
+    quat: np.ndarray
+    relative: str = None # block x is placed relative to block y in special tower formation (clockwise)
+    relative_layered: str = None # block x is on the second layer relative to y and stacked between y and z
+    oriented: bool = False # block x is oriented correctly
+    placed: bool = False # block x is in the right place
 
 # Global gripper state instance
 gripperState = GripperState()
@@ -87,14 +92,16 @@ class StateEstimation:
             if block_name in blocks_state:
                 block = blocks_state[block_name]
                 position = np.array(block.get_pos(), dtype=np.float64)
+                quat = np.asarray(block.get_quat(), dtype=np.float64)
+
                 
                 # Create appropriate cube type based on problem
                 if self.problem == "tower":
                     new_cube = TowerCube(name=block_name, position=position)
                 elif self.problem == "adjacency":
                     new_cube = adjacentCube(name=block_name, position=position)
-                elif self.problem == 'special':
-                    new_cube = specialCube(name=block_name, position=position)
+                elif self.problem == 'special_tower':
+                    new_cube = specialCube(name=block_name, position=position, quat=quat)
                 else:
                     print(f"ERROR: Unknown problem type '{self.problem}'")
                     continue
@@ -209,8 +216,21 @@ class StateEstimation:
                         pddl_facts.append(f"(longDiag {block.name} {block.longDiag})")
                     if block.placed:
                         pddl_facts.append(f"(placed {block.name})")
-            case 'special':
-                ##IMPLEMENT SPECIAL HERE
+            case 'special_tower':
+                for block in self.block_info:
+                    if block.oriented is not None:
+                        pddl_facts.append(f"(oriented {block.name})")
+                    if block.placed:
+                        pddl_facts.append(f"(placed {block.name})")
+
+                    if block.relative is not None:
+                        pddl_facts.append(f"(relative {block.name} {block.relative})") # block 1 is placed relative to 2
+                    if block.relative_layered is not None:
+                        # It should be okay to add "vague_block" here. 
+                        # In the pddl, that block is only used initially to see if there's a block already placed there and make a block stackable
+                        # Since this being ran means a block is already stacked, that condition must be already satisfied
+                        pddl_facts.append(f"(relative_layered {block.name} {block.relative_layered} vague_block )") # block 1 is placed relative to 2, 3rd block does not matter here
+                    
                 pass
             case _:
                 print(f"ERROR: Unknown problem type. Cannot parse state to PDDL.'{self.problem}'")
@@ -367,7 +387,182 @@ class StateEstimation:
             else:
                 block.placed = False
     
+    ####
+    ## SPECIAL TOWER TASK STATE ESTIMATION METHODS
+    ####
+
+    def special_tower_state_estimation(self):
+        """
+        Update special tower relationships between all blocks.
+        Make sure to call set_scene_info before running
+        """
+        pass
+
+    def estimate_relativity(self):
+        """
+        Determine special tower relationships between all blocks.
+        If determined incorrect, placed, oriented, and relative should all be removed
+        """
+        # Reset all neighbor relationships before recalculating
+        for block in self.block_info:
+            block.relative = None
+            block.relative_layered = None
+            block.placed = False
+            block.oriented = False
         
+        # Calculate neighbor relationships
+        for i in range(len(self.block_info)):
+            for j in range(i,len(self.block_info)):
+                if i != j:
+                    self.find_special_tower_relativity(self.block_info[i], self.block_info[j])
+
+    def compute_relative_world(self, ref_block, stack=False):
+            """
+            Take a reference block and compute the relative position and 
+            orientation the associated block should be placed in
+            
+            Parameters:
+                ref_block_state: block state of the reference block
+
+            Returns:
+                target_position: the target position of the new block np.array([x,y,z])
+                target_quat: quaternion for the place block np.array([w,x,y,z])
+            """
+
+            ref_block_pos = ref_block.position
+
+            ref_block_quat = ref_block.quat
+
+            # Calculate position and quaternion. See Jason's notes if curious on how.
+            block_width = 0.04 # adjustable value to create extra space if desired
+            w = ((block_width/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180))))
+            theta_dif = 72*(math.pi/180)  # 72 degrees in radians
+            r =  (w/2) / math.sin(theta_dif/2)
+
+            theta2 = math.acos((w/2)/r)*(180/math.pi)
+            beta = R.from_quat(ref_block_quat, scalar_first=True).as_euler('xyz')[2]
+            beta = beta*(180/math.pi)
+            if beta < 0:
+                beta = 360 + beta # To account for angles considered negative.
+
+            print("beta: ",beta)
+            
+            if (beta-theta2) < 90:
+                lamb = 180 - beta
+                phi = 180 - lamb - theta2
+                x_dif = -math.cos(phi*(math.pi/180))*w
+                y_dif = -math.sin(phi*(math.pi/180))*w
+
+            elif (beta-theta2) < 180:
+                lamb = 270 - beta
+                phi = 180 - lamb - theta2
+                x_dif = math.sin(phi*(math.pi/180))*w
+                y_dif = -math.cos(phi*(math.pi/180))*w
+
+            elif (beta-theta2) < 270:
+                lamb = 360 - beta
+                phi = 180 - lamb - theta2
+                x_dif = math.cos(phi*(math.pi/180))*w
+                y_dif = math.sin(phi*(math.pi/180))*w
+
+            elif (beta-theta2) < 360:
+                lamb = 450 - beta
+                phi = 180 - lamb - theta2
+                x_dif = -math.sin(phi*(math.pi/180))*w
+                y_dif = math.cos(phi*(math.pi/180))*w
+
+            else:
+                raise Exception("beta: ", beta, " - theta2: ", theta2," is an unnexpected value.")
+            
+            # print("beta: ",beta," - theta2: ",theta2," = ",beta-theta2)
+            # print("phi: ",phi, " lambda: ",lamb," beta: ",beta)
+            # print("x_dif: ",x_dif," y_dif: ",y_dif)
+
+            # If not stacking block onto the second layer
+            if stack == False:
+                target_position = np.array([ref_block_pos[0]+x_dif, ref_block_pos[1]+y_dif, ref_block_pos[2]])
+
+                # print("target_position for place_relative_oriented: ",target_position)
+                target_quat = np.array(R.from_euler('xyz', [math.pi,0.0,theta_dif]).as_quat(scalar_first=True))
+                # print("target_quat before: ",target_quat)
+
+            else: # block is stacking onto the second layer. Increase height and adjust values
+                target_position = np.array([ref_block_pos[0]+(x_dif/2), ref_block_pos[1]+(y_dif/2), ref_block_pos[2]+0.04])
+
+                print("target_position for place_relative_oriented: ",target_position)
+                target_quat = np.array(R.from_euler('xyz', [math.pi,0.0,theta_dif/2]).as_quat(scalar_first=True)) 
+                # print("target_quat before: ",target_quat)
+
+            # quaternion multiplication to combine orientations
+            target_quat[0] = ref_block_quat[0] * target_quat[0] - ref_block_quat[1] * target_quat[1] - ref_block_quat[2] * target_quat[2] - ref_block_quat[3] * target_quat[3]
+            target_quat[1] = ref_block_quat[0] * target_quat[1] + ref_block_quat[1] * target_quat[0] + ref_block_quat[2] * target_quat[3] - ref_block_quat[3] * target_quat[2]
+            target_quat[2] = ref_block_quat[0] * target_quat[2] - ref_block_quat[1] * target_quat[3] + ref_block_quat[2] * target_quat[0] + ref_block_quat[3] * target_quat[1]
+            target_quat[3] = ref_block_quat[0] * target_quat[3] + ref_block_quat[1] * target_quat[2] - ref_block_quat[2] * target_quat[1] + ref_block_quat[3] * target_quat[0]
+
+            return [target_position, target_quat]
+
+    def find_special_tower_relativity(self, check_block, ref_block):
+        """
+        Check relative placement of check_block with respect to ref_block and update their states.
+        
+        Parameters:
+            check_block: specialCube to check
+            ref_block: specialCube to check as reference
+        """
+        check_block_pos = check_block.position
+
+        check_block_z_angle = R.from_quat(check_block.quat, scalar_first=True).as_euler('xyz')[2]
+
+        # Check for relative placement
+        [expected_pos, expected_quat] = self.compute_relative_world(ref_block) # For same level position
+        expected_z = R.from_quat(expected_quat, scalar_first=True).as_euler('xyz')[2]
+
+        relative_pos_dif = np.linalg.norm(check_block_pos - expected_pos)
+        relative_z_dif = abs(expected_z - check_block_z_angle)
+
+        if relative_pos_dif < 0.15 and relative_z_dif < 3: # 0.15 on the norm is a vague number. If it doesn't work out we can edit.
+            check_block.relative = ref_block.name
+            check_block.placed = True
+            check_block.oriented = True
+            return # return to avoid access computation
+
+
+        # Check for relative stacked placement
+        [expected_pos_stacked, expected_quat_stacked] = self.compute_relative_world(ref_block, True) # For stacked position
+        expected_z_stacked = R.from_quat(expected_quat_stacked, scalar_first=True).as_euler('xyz')[2]
+
+        stacked_pos_dif = np.linalg.norm(check_block_pos - expected_pos_stacked)
+        stacked_z_dif = expected_z_stacked - check_block_z_angle
+
+        if stacked_pos_dif < 0.15 and stacked_z_dif < 3:
+            check_block.relative_layered = ref_block.name
+            check_block.placed = True
+            check_block.oriented = True
+            return
+        
+        
+                    
+
+    def check_initial_placement(self):
+        """
+        Check if a block is in the target position and update its placed status.
+        """
+        for block in self.block_info:
+            if block.name == "r1":
+                r = ((0.04/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
+                theta_block = 0
+                position = np.array([0.3+r*math.cos(theta_block), 0.3+r*math.sin(theta_block), 0.0])
+                z_angle = R.from_quat(block.quat, scalar_first=True).as_euler('xyz')[2]
+
+                if np.linalg.norm(block.position - position) < 0.15:
+                    block.placed = True
+                else:
+                    block.placed = False
+
+                if abs(z_angle) < 3:
+                    block.oriented = True
+                else:
+                    block.oriented = False
 
 
     ####
@@ -408,8 +603,8 @@ class StateEstimation:
             case "adjacency":
                 self.adjacent_state_estimation()
                 return
-            case 'special':
-                ##IMPLEMENT SPECIAL HERE
+            case 'special_tower':
+                self.special_tower_state_estimation
                 return
             case _:
                 #assume adjacency
@@ -449,6 +644,9 @@ class StateEstimation:
         if self.problem == "adjacency":
             pddl = "(define (problem adjacent-blocks)\n"
             pddl += "  (:domain adjacent-blocks-world-noclear)\n\n"
+        elif self.problem == "special_tower":
+            pddl = "(define (problem special-tower-blocks)\n"
+            pddl += "  (:domain special-tower-blocks-world)\n\n"
         else:
             pddl = "(define (problem replanned-blocks)\n"
             pddl += "  (:domain blocks-world)\n\n"
@@ -528,6 +726,13 @@ class StateEstimation:
                 ('Wneighbor', 'b5', 'b4'),
                 ('Sneighbor', 'b6', 'b4')
             ]
+        elif self.problem == "special_tower":
+            self.special_tower_state_estimation()
+            goal_config = [
+                ('oriented', 'r1'),
+                ('relative', 'b1', 'r1'),
+                ('relative_layered', 'b2', 'r1', 'b1')
+            ]
         else:
             # Default to adjacency
             self.adjacent_state_estimation()
@@ -554,6 +759,8 @@ class StateEstimation:
                 print(f"  {block.name}: on={block.on}, clear={block.clear}, ontable={block.ontable}")
             elif self.problem == "adjacency":
                 print(f"  {block.name}: NNeighbor={block.NNeighbor}, SNeighbor={block.SNeighbor}, ENeighbor={block.ENeighbor}, WNeighbor={block.WNeighbor}, longDiag={block.longDiag}, placed={block.placed}")
+            elif self.problem == "special_tower":
+                print(f" {block.name}: placed={block.placed}, oriented={block.oriented}, relative={block.relative}, relative_layered={block.relative_layered}")
             else:
                 print(f"  {block.name}: NNeighbor={block.NNeighbor}, SNeighbor={block.SNeighbor}, ENeighbor={block.ENeighbor}, WNeighbor={block.WNeighbor}, longDiag={block.longDiag}, placed={block.placed}")
         # Print gripper state
