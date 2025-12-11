@@ -11,15 +11,7 @@
     (placed b2)
     (Eneighbor b3 b1)
     (placed b3)
-    (Nneighbor b4 b6)
-    (Eneighbor b4 b5)
-    (longDiag b4 b1)
-    (placed b4)
-    (Wneighbor b5 b4)
-    (placed b5)
-    (Sneighbor b6 b4)
-    (placed b6)
-    (handempty)
+    (holding b4)
   )
 
   (:goal (and

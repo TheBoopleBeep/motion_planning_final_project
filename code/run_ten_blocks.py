@@ -43,7 +43,7 @@ def STACK(block1, block2, blocks_state, franka, scene):
     
     # Move above target block
     move_while_closed(franka, scene, np.array([basepos[0], basepos[1], b2pos[2] + 0.2]), 
-                     attached_object=b1, waypoints=-1, quat=quat, tolerance=.001)
+                     attached_object=b1, waypoints=-1, quat=quat)
     for _ in range(30):
         scene.step()
     
@@ -78,7 +78,7 @@ def PICK(block, blocks_state, franka, scene):
     bpos = np.asarray(b.get_pos(), dtype=np.float64)
     
     # Move above block (offset accounts for gripper geometry)
-    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, waypoints=-1, waypoint_scale=.5, tolerance = .01)
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, waypoints=-1, waypoint_scale=.5)
     
     # Lower to block
     move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.07]) + GRIPPER_EE_OFFSET, 
