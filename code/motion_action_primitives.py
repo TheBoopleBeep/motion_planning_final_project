@@ -83,7 +83,7 @@ def _apply_jacobian_correction(franka, scene, end_effector, target_pos, toleranc
         print(f"  \u26a0 Jacobian correction insufficient (error: {final_error:.6f}m), continuing...")
 
 
-def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=False, max_retries=30, 
+def move_while_closed(franka, scene, pos, quat=DEFAULT_ORIENTATION, ignore_collisions=False, max_retries=30, 
                      tolerance=0.01, waypoints=-1, planner='BITstar', attached_object=None):
     """
     Move robot with gripper closed to target position, maintaining grip on held object.
@@ -108,10 +108,7 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=False, ma
     
     # Maintain current gripper position during movement
     current_gripper_pos = franka.get_qpos()[-2:]
-    
-    # Use default orientation if not specified
-    if quat is None:
-        quat = DEFAULT_ORIENTATION
+
     
     original_pos = np.array(pos, dtype=np.float64)
     
@@ -225,7 +222,7 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=False, ma
     print(f"ERROR: Failed to find valid path after {max_retries} attempts")
     raise RuntimeError(f"Path planning failed for position {original_pos}")
 
-def move_while_open(franka, scene, pos, max_retries=10, tolerance=0.011, waypoints=-1, 
+def move_while_open(franka, scene, pos, quat=DEFAULT_ORIENTATION, max_retries=10, tolerance=0.011, waypoints=-1, 
                    planner='BITstar', attached_object=None, waypoint_scale = .75, ignore_collisions=False):
     """
     Move robot with gripper open to target position.
@@ -249,7 +246,7 @@ def move_while_open(franka, scene, pos, max_retries=10, tolerance=0.011, waypoin
         qpos = franka.inverse_kinematics(
             link=end_effector,
             pos=pos,
-            quat=DEFAULT_ORIENTATION
+            quat=quat
         )
         
         if qpos is None:
