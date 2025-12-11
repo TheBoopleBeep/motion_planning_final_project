@@ -141,6 +141,7 @@ class PlannerInterface:
         qpos_start = tensor_to_array(qpos_start)
         qpos_goal = tensor_to_array(qpos_goal)
 
+
         if qpos_start.shape != (self.robot.n_qs,) or qpos_goal.shape != (self.robot.n_qs,):
             gs.raise_exception("Invalid shape for qpos_start or qpos_goal")
 
