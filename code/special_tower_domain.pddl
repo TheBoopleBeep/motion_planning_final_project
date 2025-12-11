@@ -12,6 +12,7 @@
     (inplace ?x - block) ; block x is in the right place
     (oriented ?x - block) ; block x is in the right place and oriented
     (relative ?x - block ?y - block) ; block x is placed relative to block y in special tower formation (clockwise)
+    (relative_layered ?x - block ?y - block ?z - block) ; block x is on the second layer relative to y and stacked between y and z
   )
   
   (:action pick
@@ -54,6 +55,12 @@
     :parameters (?x - block ?y - block)
     :precondition (and (holding ?x ) (inplace ?y))
     :effect (and (clear ?x) (relative ?x ?y) (inplace ?x) (handempty) (not (holding ?x)))  ; x is placed relative to y, is clear, in the correct position, and not held
+  )
+
+  (:action place_stacked_relative_oriented
+    :parameters (?x - block ?y - block ?z - block)
+    :precondition (and (holding ?x) (inplace ?y) (inplace ?z))
+    :effect (and (clear ?x) (inplace ?x) (handempty) (relative_layered ?x ?y ?z) (not (holding ?x)))  ; x is placed relative to y, is clear, in the correct position, and not held
   )
 
 )
