@@ -18,5 +18,9 @@
   (:goal (and
     (oriented r1)
     (relative b1 r1)
+    (relative y1 b1)
+    (relative g1 y1)
+    (relative o1 g1)
+
   ))
 )

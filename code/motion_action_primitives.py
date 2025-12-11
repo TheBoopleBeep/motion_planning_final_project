@@ -11,7 +11,7 @@ from time import sleep
 
 
 
-def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max_retries=30, tolerance=.001, waypoints=200, planner='BITstar', attached_object=None):
+def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max_retries=30, tolerance=.01, waypoints=200, planner='BITstar', attached_object=None):
     print("running move_while_closed()")
     motors_dof = np.arange(7)
     fingers_dof = np.arange(7, 9)
@@ -52,6 +52,10 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max
             pos=pos_with_variance,
             quat=quat,
         )
+        quat_as_euler = R.from_quat(quat, scalar_first=True).as_euler('xyz')
+
+        print("given quat as xyz euler in degrees: ",quat_as_euler*(180/math.pi))
+
         
         # Check if IK succeeded
         if qpos is None:
@@ -109,6 +113,7 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max
         try:
             # First, ensure gripper is firmly closed before moving
             current_arm_pos = franka.get_qpos()[:-2]
+
             for _ in range(5):
                 franka.control_dofs_position(current_arm_pos, motors_dof)
                 franka.control_dofs_force(np.array([-3.0, -3.0]), fingers_dof)
@@ -124,6 +129,7 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max
             # Hold position until arm reaches desired pose
             final_arm_pos = path[-1][:-2]
             step_count = 0
+
             while True:
                 franka.control_dofs_force(np.array([-3.0, -3.0]), fingers_dof)
                 scene.step()
@@ -133,7 +139,7 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max
                 step_count += 1
                 if step_count % 10 == 0:
                     print(f"move_while_closed convergence: step {step_count}, distance={final_dist:.6f}")
-                if final_dist <= tolerance or step_count >= 50:
+                if final_dist <= tolerance or step_count >= 110:
                     break
             
             # Check if final position is within 0.001m of desired position
@@ -143,11 +149,22 @@ def move_while_closed(franka, scene, pos, quat=None, ignore_collisions=True, max
             
             if final_dist > tolerance:
                 print(f"Position error {final_dist:.6f}m exceeds %f threshold, replanning...", tolerance)
-                # Continue to next attempt to replan
                 print("Attempting Control")
-                control_to_pos(franka, scene, pos, quat, ignore_collisions, max_retries, tolerance)
-                continue
-            
+                if final_dist - tolerance < 0.01: # If the ee is close, control to position
+                    control_to_pos(franka, scene, pos, quat, ignore_collisions, max_retries, tolerance)
+                    # continue
+                    actual_final_pos = end_effector.get_pos()
+                    final_dist = np.linalg.norm(actual_final_pos - original_pos)
+                    print(f"Final position error: {final_dist:.6f}m")
+
+                    # Continue to next attempt to replan
+                    if final_dist > tolerance:
+                        continue
+                
+                else:
+                    # Too far and risky to attempt control, replan
+                    continue
+
             # Success!
             print(f"Successfully reached target within tolerance")
             return
@@ -252,7 +269,7 @@ def move_while_open(franka, scene, pos, max_retries=10, tolerance=.011, waypoint
                 step_count += 1
                 if step_count % 10 == 0:
                     print(f"move_while_open convergence: step {step_count}, distance={final_dist:.6f}")
-                if final_dist <= tolerance or step_count >= 50:
+                if final_dist <= tolerance or step_count >= 110:
                     break
             
             # Check if final position is within 0.001m of desired position
@@ -309,7 +326,7 @@ def open_gripper(franka, scene):
         scene.step()
 
 def control_to_pos(franka, scene, pos, quat=None, ignore_collisions=True, max_retries=30, tolerance=.01, waypoints=200, planner='BITstar', attached_object=None):
-    print("Running control_to_pos()")
+    print("Running control_to_pos() to: ",pos)
     motors_dof = np.arange(7)
     fingers_dof = np.arange(7, 9)
     
@@ -380,7 +397,7 @@ def control_to_pos(franka, scene, pos, quat=None, ignore_collisions=True, max_re
 
     # trajectory_steps = int(qpos_diff * 100) # set trajectory time depending on starting difference
 
-    trajectory_steps = 30 # TODO Hard value for testing, remove once done.
+    trajectory_steps = 100 # TODO Hard value for testing, remove once done.
 
     travel_time = 5 # seconds
     cur_time = 0 # seconds
@@ -441,8 +458,10 @@ def control(target_state, cur_pose, time_step, cur_time, past_pose, integral_pos
     # Ensure target_state is numpy array
     target_state = np.asarray(target_state, dtype=np.float64)
 
-    pos_e = target_state[:7] - cur_pose_np
-    vel_e = target_state[8:14] - (cur_pose_np - past_pose) / time_step 
+    pos_e = target_state[:7] - cur_pose_np # 0-7
+    # print("target_state[1:14]",target_state[1:14])
+    # print("cur_pose_np: ",cur_pose_np," past_pose: ",past_pose," time_step: ",time_step)
+    vel_e = target_state[7:14] - (cur_pose_np - past_pose) / time_step 
     integral_pos_e = pos_e * cur_time
 
     kp = np.array([0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]) # labeled joints 1-7
@@ -656,7 +675,7 @@ def PLACE_SPECIFIC(block, position, blocks_state, franka, scene):
     #move above target position
     move_while_closed(franka, scene, position + np.array([0, 0, 0.30]), attached_object=b)
     # #lower to target position
-    control_to_pos(franka, scene, position + np.array([0, 0, 0.13]), attached_object=b, ignore_collisions=True)
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.13]), attached_object=b, ignore_collisions=True)
     # #release
     open_gripper(franka, scene)
     # #move up
@@ -669,9 +688,10 @@ def PLACE_SPECIFIC_ORIENTED(block, position, quat, blocks_state, franka, scene):
     # bpos = np.asarray(b.get_pos(), dtype=np.float64)
 
     #move above target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.30]), quat, attached_object=b,waypoints=200)
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.60]), quat=quat, attached_object=b)
     # #lower to target position
-    control_to_pos(franka, scene, position + np.array([0, 0, 0.13]), quat, attached_object=b, ignore_collisions=True, waypoints = 100)
+
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.13]), quat=quat, attached_object=b, ignore_collisions=True)
     # #release
     open_gripper(franka, scene)
     # #move up
@@ -755,10 +775,12 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
             # Radius of circle connecting block centers in special tower task
             r = ((0.025/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
             theta_r = 0*(math.pi/180)
-            theta_b = 72*(math.pi/180)+math.pi
-            theta_y = 144*(math.pi/180)+math.pi
-            theta_g = 216*(math.pi/180)+math.pi
-            theta_o = 288*(math.pi/180)+math.pi
+            theta_b = 72*(math.pi/180)
+            theta_y = 144*(math.pi/180)
+            theta_g = 216*(math.pi/180)
+            theta_o = 288*(math.pi/180)
+
+            print("theta_o, degrees: ",theta_o*(180/math.pi))
             block_state = blocks_state[block]
             print("block:", block)
             ref_block = parts[2]
@@ -769,29 +791,30 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
 
             target_positions = {
                 # For Special Tower Task
-                'r1': np.array([0.6+r*math.cos(theta_r), -0.4+r*math.sin(theta_r), 0.0]),
-                'g1': np.array([0.5+r*math.cos(theta_g), -0.5+r*math.sin(theta_g), 0.0]),
-                'b1': np.array([0.5+r*math.cos(theta_b), -0.5+r*math.sin(theta_b), 0.0]),
-                'o1': np.array([0.5+r*math.cos(theta_o), -0.5+r*math.sin(theta_o), 0.0]),
-                'y1': np.array([0.5+r*math.cos(theta_y), -0.5+r*math.sin(theta_y), 0.0]),
-                'r2': np.array([0.4, -0.2, 0.0]), # Not made yet, will just require a angle change and height change
+                # only r1 and r2 needed, rest left for testing.
+                'r1': np.array([0.3+r*math.cos(theta_r), 0.3+r*math.sin(theta_r), 0.0]),
+                'g1': np.array([0.3+r*math.cos(theta_g), 0.3+r*math.sin(theta_g), 0.0]),
+                'b1': np.array([0.3+r*math.cos(theta_b), 0.3+r*math.sin(theta_b), 0.0]),
+                'o1': np.array([0.3+r*math.cos(theta_o), 0.3+r*math.sin(theta_o), 0.0]),
+                'y1': np.array([0.3+r*math.cos(theta_y), 0.3+r*math.sin(theta_y), 0.0]),
+                'r2': np.array([0.4, -0.2, 0.0]), 
                 'g2': np.array([0.4, -0.2, 0.0]),
                 'b2': np.array([0.4, -0.2, 0.0]),
                 'o2': np.array([0.4, -0.2, 0.0]),
-                'y2': np.array([0.4, -0.2, 0.0]),
+                'y2': np.array([0.4, -0.2, 0.0])
             }
             target_orientations = {
                 # [w, x, y, z] unit quaternions
-                'r1': np.array(R.from_euler('xz', [math.pi,theta_r]).as_quat(scalar_first=True)),
-                'g1': np.array(R.from_euler('xz', [math.pi,theta_g]).as_quat(scalar_first=True)),
-                'b1': np.array(R.from_euler('xz', [math.pi,theta_b]).as_quat(scalar_first=True)),
-                'o1': np.array(R.from_euler('xz', [math.pi,theta_o]).as_quat(scalar_first=True)),
-                'y1': np.array(R.from_euler('xz', [math.pi,theta_y]).as_quat(scalar_first=True)),
+                'r1': np.array(R.from_euler('xyz', [math.pi,0.0,theta_r]).as_quat(scalar_first=True)),
+                'g1': np.array(R.from_euler('xyz', [math.pi,0.0,theta_g]).as_quat(scalar_first=True)),
+                'b1': np.array(R.from_euler('xyz', [math.pi,0.0,theta_b]).as_quat(scalar_first=True)),
+                'o1': np.array(R.from_euler('xyz', [math.pi,0.0,theta_o]).as_quat(scalar_first=True)),
+                'y1': np.array(R.from_euler('xyz', [math.pi,0.0,theta_y]).as_quat(scalar_first=True)),
                 'r2': np.array([0.0, 0.0, 0.0, 1.0]),
                 'g2': np.array([0.0, 0.0, 0.0, 1.0]),
                 'b2': np.array([0.0, 0.0, 0.0, 1.0]),
                 'o2': np.array([0.0, 0.0, 0.0, 1.0]),
-                'y2': np.array([0.0, 0.0, 0.0, 1.0]),
+                'y2': np.array([0.0, 0.0, 0.0, 1.0])
             }
 
             if block == 'r1':
@@ -827,14 +850,19 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
             else:
                 print(f"ERROR: Unknown block for place_specific: {block}")
                 continue
+            print("quat for place_specific_oriented: ",quat)
+
+            quat_as_euler = R.from_quat(quat, scalar_first=True).as_euler('xyz')
+
+            print("place_specific_oriented quat as xyz euler in degrees: ",quat_as_euler*(180/math.pi))
             PLACE_SPECIFIC_ORIENTED(block, position, quat, blocks_state, franka, scene)
 
         elif action_name == "place_relative_oriented":
-            block = parts[1]
+            block = parts[2]
 
             block_state = blocks_state[block]
             # print("block:", block)
-            ref_block = parts[2]
+            ref_block = parts[1]
             block_pos = np.asarray(block_state.get_pos(), dtype=np.float64)
             print("block_pos: ",block_pos)
             block_quat = np.asarray(block_state.get_quat(), dtype=np.float64)
@@ -842,15 +870,59 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
             # print("block_orient:", block_quat)
             # print("block_state:", block_state)
 
+            # Determine new block position
+            # See Jason's notes on the math + thought process behind this
+            block_half_width = 0.04 # adjustable value to create extra space if desired
+            w = ((block_half_width/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180))))
             # 0.02m is the half-width of a block, add more to create extra space
-            r = ((0.03/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
             theta_dif = 72*(math.pi/180)  # 72 degrees in radians
+            r =  (w/2) / math.sin(theta_dif/2)
+  
 
-            target_position = np.array([block_pos[0]+r*math.cos(theta_dif), block_pos[1]+r*math.sin(theta_dif), block_pos[2]])
-            print("target_position: ",target_position)
-            target_quat = np.array(R.from_euler('xz', [math.pi,theta_dif]).as_quat(scalar_first=True))
-            print("target_quat before: ",target_quat)
+            theta2 = math.acos((w/2)/r)*(180/math.pi)
+            beta = R.from_quat(block_quat, scalar_first=True).as_euler('xyz')[2]
+            beta = beta*(180/math.pi)
+            if beta < 0:
+                beta = 360 + beta # To account for angles considered negative.
 
+            print("beta: ",beta)
+            
+            if (beta-theta2) < 90:
+                lamb = 180 - beta
+                phi = 180 - lamb - theta2
+                x_dif = -math.cos(phi*(math.pi/180))*w
+                y_dif = -math.sin(phi*(math.pi/180))*w
+
+            elif (beta-theta2) < 180:
+                lamb = 270 - beta
+                phi = 180 - lamb - theta2
+                x_dif = math.sin(phi*(math.pi/180))*w
+                y_dif = -math.cos(phi*(math.pi/180))*w
+
+            elif (beta-theta2) < 270:
+                lamb = 360 - beta
+                phi = 180 - lamb - theta2
+                x_dif = math.cos(phi*(math.pi/180))*w
+                y_dif = math.sin(phi*(math.pi/180))*w
+
+            elif (beta-theta2) < 360:
+                lamb = 450 - beta
+                phi = 180 - lamb - theta2
+                x_dif = -math.sin(phi*(math.pi/180))*w
+                y_dif = math.cos(phi*(math.pi/180))*w
+
+            else:
+                raise Exception("beta: ", beta, " - theta2: ", theta2," is an unnexpected value.")
+            
+            print("beta: ",beta," - theta2: ",theta2," = ",beta-theta2)
+            print("phi: ",phi, " lambda: ",lamb," beta: ",beta)
+            print("x_dif: ",x_dif," y_dif: ",y_dif)
+
+            target_position = np.array([block_pos[0]+x_dif, block_pos[1]+y_dif, block_pos[2]])
+
+            print("target_position for place_relative_oriented: ",target_position)
+            target_quat = np.array(R.from_euler('xyz', [math.pi,0.0,theta_dif]).as_quat(scalar_first=True))
+            # print("target_quat before: ",target_quat)
 
             # quaternion multiplication to combine orientations
             target_quat[0] = block_quat[0] * target_quat[0] - block_quat[1] * target_quat[1] - block_quat[2] * target_quat[2] - block_quat[3] * target_quat[3]
@@ -858,7 +930,7 @@ def execute_pddl_plan(domain_file, problem_file, blocks_state, franka, scene):
             target_quat[2] = block_quat[0] * target_quat[2] - block_quat[1] * target_quat[3] + block_quat[2] * target_quat[0] + block_quat[3] * target_quat[1]
             target_quat[3] = block_quat[0] * target_quat[3] + block_quat[1] * target_quat[2] - block_quat[2] * target_quat[1] + block_quat[3] * target_quat[0]
 
-            print("target_quat after: ",target_quat)
+            # print("target_quat after: ",target_quat)
             PLACE_SPECIFIC_ORIENTED(block, target_position, target_quat, blocks_state, franka, scene)
 
         

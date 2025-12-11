@@ -5,6 +5,9 @@ from scenes import create_scene_adjacency
 from pddl_planner import plan_task, save_plan_to_file, load_plan_from_file
 from motion_action_primitives import move_while_closed, move_while_open, close_gripper, open_gripper
 import os
+import math
+from scipy.spatial.transform import Rotation as R
+
 gripper_ee_offset = np.array([0.0027, 0.003, 0.04])
 
 def PICK(block, blocks_state, franka, scene):
@@ -115,6 +118,40 @@ def PLACELONGDIAG(block1, block2, blocks_state, franka, scene):
     move_while_open(franka, scene, b2pos + np.array([0.088, 0.088, 0.3]),attached_object=b1,waypoints=50)
 
 
+# TODO Added for testing
+# ---------------------------
+def PLACE_SPECIFIC(block, position, blocks_state, franka, scene):
+    print("Place_Specific")
+    b = blocks_state[block]
+    # Convert Genesis positions to proper numpy arrays
+    # bpos = np.asarray(b.get_pos(), dtype=np.float64)
+
+    #move above target position
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.30]), attached_object=b)
+    # #lower to target position
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.13]), attached_object=b, ignore_collisions=True)
+    # #release
+    open_gripper(franka, scene)
+    # #move up
+    move_while_open(franka, scene, position + np.array([0, 0, 0.3]))
+
+def PLACE_SPECIFIC_ORIENTED(block, position, quat, blocks_state, franka, scene):
+    print("Place_Specific_Oriented")
+    b = blocks_state[block]
+    # Convert Genesis positions to proper numpy arrays
+    # bpos = np.asarray(b.get_pos(), dtype=np.float64)
+
+    #move above target position
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.30]), quat, attached_object=b,waypoints=200)
+    # #lower to target position
+    move_while_closed(franka, scene, position + np.array([0, 0, 0.13]), quat, attached_object=b, ignore_collisions=True, waypoints = 100)
+    # #release
+    open_gripper(franka, scene)
+    # #move up
+    move_while_open(franka, scene, position + np.array([0, 0, 0.3]))
+
+# ---------------------------
+
 def execute_pddl_plan(plan_file, domain_file, problem_file, blocks_state, franka, scene):
     """
     Execute a PDDL plan by loading from file if it exists, or computing and saving it.
@@ -163,35 +200,94 @@ def execute_pddl_plan(plan_file, domain_file, problem_file, blocks_state, franka
             # place block
             print("PLACE %s" % parts[1])
             block = parts[1]
-            PLACE(block, blocks_state, franka, scene)
+
+            ## TODO edited for testing
+            # ---------------------------
+            # pos = np.array([0.3, 0.3, 0.0]) # actual starting position of pattern
+            theta_r = 0
+            r = ((0.025/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
+            pos = np.array([0.3+r*math.cos(theta_r), 0.3+r*math.sin(theta_r), 0.0])
+            # pos = np.array([0.66, -0.4, 0.0])
+            print("pos output from place: ",pos)
+            quat = np.array(R.from_euler('xz', [math.pi,theta_r]).as_quat(scalar_first=True))
+
+            PLACE_SPECIFIC_ORIENTED(block, pos, quat, blocks_state, franka, scene)
+
+            # ---------------------------
+
             
         elif action_name == "placenorth":
             # placeNorth block1 block2
             print("PLACENORTH %s %s" % (parts[1], parts[2]))
             block1 = parts[1]
             block2 = parts[2]
-            PLACENORTH(block1, block2, blocks_state, franka, scene)
-            
+            ## TODO edited for testing
+            # ---------------------------
+
+            theta_r = 0
+            quat = np.array(R.from_euler('xz', [math.pi,theta_r]).as_quat(scalar_first=True))
+            b2 = blocks_state[block2]
+            b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
+            pos = b2pos + np.array([0.043, 0.0, 0.0])
+
+            PLACE_SPECIFIC_ORIENTED(block1, pos, quat, blocks_state, franka, scene)
+
+            # ---------------------------            
         elif action_name == "placeeast":
             # placeEast block1 block2
             print("PLACEEAST %s %s" % (parts[1], parts[2]))
             block1 = parts[1]
             block2 = parts[2]
-            PLACEEAST(block1, block2, blocks_state, franka, scene)
-            
+            ## TODO edited for testing
+            # ---------------------------
+
+            theta_r = 0
+            quat = np.array(R.from_euler('xz', [math.pi,theta_r]).as_quat(scalar_first=True))
+            b2 = blocks_state[block2]
+            b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
+            pos = b2pos + np.array([0, 0.043, 0.0])
+
+            PLACE_SPECIFIC_ORIENTED(block1, pos, quat, blocks_state, franka, scene)
+
+            # ---------------------------            
         elif action_name == "placesouth":
             # placeSouth block1 block2
             print("PLACESOUTH %s %s" % (parts[1], parts[2]))
             block1 = parts[1]
             block2 = parts[2]
-            PLACESOUTH(block1, block2, blocks_state, franka, scene)
-            
+            ## TODO edited for testing
+            # ---------------------------
+
+
+            theta_r = 0
+            quat = np.array(R.from_euler('xz', [math.pi,theta_r]).as_quat(scalar_first=True))
+            b2 = blocks_state[block2]
+            b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
+            pos = b2pos + np.array([-0.043, 0.0, 0.0])
+
+            PLACE_SPECIFIC_ORIENTED(block1, pos, quat, blocks_state, franka, scene)
+
+            # ---------------------------            
         elif action_name == "placewest":
             # placeWest block1 block2
             print("PLACEWEST %s %s" % (parts[1], parts[2]))
             block1 = parts[1]
             block2 = parts[2]
-            PLACEWEST(block1, block2, blocks_state, franka, scene)
+            ## TODO edited for testing
+            # ---------------------------
+
+            theta_r = 0
+            quat = np.array(R.from_euler('xz', [math.pi,theta_r]).as_quat(scalar_first=True))
+
+
+            b2 = blocks_state[block2]
+            b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
+            pos = b2pos + np.array([0, -0.043, 0.0])
+
+            PLACE_SPECIFIC_ORIENTED(block1, pos, quat, blocks_state, franka, scene)
+
+            # ---------------------------
+
             
         elif action_name == "placelongdiag":
             # placeLongDiag block1 block2
@@ -199,6 +295,7 @@ def execute_pddl_plan(plan_file, domain_file, problem_file, blocks_state, franka
             block2 = parts[2]
             print("PLACELONGDIAG %s %s" % (block1, block2))
             PLACELONGDIAG(block1, block2, blocks_state, franka, scene)
+
             
         else:
             print(f"ERROR: Unknown action: {action_name}")
