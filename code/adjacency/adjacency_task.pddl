@@ -8,7 +8,7 @@
     (Eneighbor ?x - block ?y - block)  ; block x is the East neighbor of block y
     (Sneighbor ?x - block ?y - block)  ; block x is the South neighbor of block y
     (Wneighbor ?x - block ?y - block)  ; block x is the West neighbor of block y
-    (longDiag ?x - block ?y - block)   ; block x is along the long NE diagonal of block y
+    (longDiag ?x - block ?y - block)   ; block x is along the long NW diagonal of block y
     (handempty) ; robot hand is empty
     (holding ?x - block)  ; robot is holding block x
     (placed ?x - block)   ; block has been placed in final position

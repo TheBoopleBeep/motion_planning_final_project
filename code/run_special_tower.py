@@ -209,9 +209,8 @@ def PLACE_RELATIVE_ORIENTED(block1, block2, blocks_state, franka, scene):
 
     # #release
     open_gripper_slight(franka, scene)
-
-    # #move up
-    move_while_open(franka, scene, position + np.array([x_ee_adjust, y_ee_adjust, 0.3]), quat=quat, attached_object=place_b)
+    #move_up
+    move_while_open(franka, scene, position + np.array([x_ee_adjust, y_ee_adjust, 0.3]), quat=quat, attached_object=place_b,adjust_orientation=False)
 
     open_gripper(franka, scene)
 
