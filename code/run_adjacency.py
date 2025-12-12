@@ -43,7 +43,7 @@ def PLACEEAST(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and east of block2, aligned with y axis
-    move_while_closed(franka, scene, b2pos + np.array([0, 0.043, 0.2]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([0, 0.044, 0.25]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1)
     for _ in range(10):
         scene.step()
     
@@ -68,7 +68,7 @@ def PLACEWEST(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and west of block2, aligned with y axis
-    move_while_closed(franka, scene, b2pos + np.array([0, -0.043, 0.25]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([0, -0.044, 0.25]), quat=np.array([0, -0.7071, 0.7071, 0]), attached_object=b1)
     for _ in range(10):
         scene.step()
     
@@ -83,7 +83,7 @@ def PLACEWEST(block1, block2, blocks_state, franka, scene):
     # Release
     open_gripper(franka, scene)
     # Move up
-    move_while_open(franka, scene, b2pos + np.array([0, -.043, 0.3]))
+    move_while_open(franka, scene, b2pos + np.array([0, -.044, 0.3]))
 
 def PLACENORTH(block1, block2, blocks_state, franka, scene):
     b1 = blocks_state[block1]
@@ -93,13 +93,13 @@ def PLACENORTH(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and north of block2, aligned with x axis
-    move_while_closed(franka, scene, b2pos + np.array([0.043, 0, 0.25]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([0.044, 0, 0.25]), attached_object=b1)
     for _ in range(10):
         scene.step()
     
     # Calculate position correction based on current block position (x,y only)
     b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
-    target_pos = b2pos + np.array([0.043, 0, 0])
+    target_pos = b2pos + np.array([0.044, 0, 0])
     diff = target_pos[:2] - b1pos[:2]  # Only x,y difference
     des_pos = np.array([target_pos[0] + diff[0], target_pos[1] + diff[1], 0.14])
     
@@ -108,7 +108,7 @@ def PLACENORTH(block1, block2, blocks_state, franka, scene):
     # Release
     open_gripper(franka, scene)
     # Move up
-    move_while_open(franka, scene, b2pos + np.array([0.043, 0, 0.3]))
+    move_while_open(franka, scene, b2pos + np.array([0.044, 0, 0.3]))
 
 def PLACESOUTH(block1, block2, blocks_state, franka, scene):
     b1 = blocks_state[block1]
@@ -118,13 +118,13 @@ def PLACESOUTH(block1, block2, blocks_state, franka, scene):
     b2pos = np.asarray(b2.get_pos(), dtype=np.float64)
 
     #move above and south of block2, aligned with x axis
-    move_while_closed(franka, scene, b2pos + np.array([-0.043, 0, 0.25]), attached_object=b1)
+    move_while_closed(franka, scene, b2pos + np.array([-0.044, 0, 0.25]), attached_object=b1)
     for _ in range(10):
         scene.step()
     
     # Calculate position correction based on current block position (x,y only)
     b1pos = np.asarray(b1.get_pos(), dtype=np.float64)
-    target_pos = b2pos + np.array([-0.043, 0, 0])
+    target_pos = b2pos + np.array([-0.044, 0, 0])
     diff = target_pos[:2] - b1pos[:2]  # Only x,y difference
     des_pos = np.array([target_pos[0] + diff[0], target_pos[1] + diff[1], 0.14])
     
@@ -133,7 +133,7 @@ def PLACESOUTH(block1, block2, blocks_state, franka, scene):
     # Release
     open_gripper(franka, scene)
     # Move up
-    move_while_open(franka, scene, b2pos + np.array([-.043, 0, 0.3]), attached_object=b1)
+    move_while_open(franka, scene, b2pos + np.array([-0.044, 0, 0.3]), attached_object=b1)
 
 def PLACELONGDIAG(block1, block2, blocks_state, franka, scene):
     b1 = blocks_state[block1]

@@ -342,7 +342,7 @@ def create_scene_adjacency() -> Tuple[Any, Any, Dict[str, Any], Any]:
     pos6 = np.array([.6, -.2 , 0.02])
     cube1 = scene.add_entity(
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos1),
-        surface=gs.options.surfaces.Plastic(color=(1.0, 0.0, 0.0)),
+        surface=gs.options.surfaces.Plastic(color=(0.0, 1.0, 0.0)),
     )
     cube2 = scene.add_entity(
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos2),
@@ -350,22 +350,22 @@ def create_scene_adjacency() -> Tuple[Any, Any, Dict[str, Any], Any]:
     )
     cube3 = scene.add_entity(
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos3),
-        surface=gs.options.surfaces.Plastic(color=(0.0, 0.0, 1.0)),
+        surface=gs.options.surfaces.Plastic(color=(0.0, 1.0, 0.0)),
     )
 
     cube4 = scene.add_entity(
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos4),
-        surface=gs.options.surfaces.Plastic(color=(1.0, 0, 1.0)),
+        surface=gs.options.surfaces.Plastic(color=(0.0, 1.0, 0.0)),
     )
 
     cube5 = scene.add_entity(
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos5),
-        surface=gs.options.surfaces.Plastic(color=(1.0, 0, 1.0)),
+        surface=gs.options.surfaces.Plastic(color=(0.0, 1.0, 0.0)),
     )
 
     cube6 = scene.add_entity(
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos=pos6),
-        surface=gs.options.surfaces.Plastic(color=(0, 1.0, 1.0)),
+        surface=gs.options.surfaces.Plastic(color=(0.0, 1.0, 0.0)),
     )
 
     franka_raw = scene.add_entity(gs.morphs.MJCF(file="xml/franka_emika_panda/panda.xml"))
