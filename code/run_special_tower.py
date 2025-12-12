@@ -11,7 +11,7 @@ from scipy.spatial.transform import Rotation as R
 
 
 # Constants
-GRIPPER_EE_OFFSET = np.array([0.00, 0.003, 0.04])
+GRIPPER_EE_OFFSET = np.array([0.00, 0.003, 0.04]) # This seems to not account for the orientation of the end effector
 
 # Global state for stacking
 baseblock = None
@@ -79,20 +79,23 @@ def PICK(block, blocks_state, franka, scene):
     """
     b = blocks_state[block]
     bpos = np.asarray(b.get_pos(), dtype=np.float64)
-    
+    bquat = np.asarray(b.get_quat(), dtype=np.float64)
+    zangle = R.from_quat(bquat, scalar_first=True).as_euler('xyz')[2]
+    in_quat = R.from_euler('xyz',np.array([math.pi,0,zangle])).as_quat(scalar_first=True)
+
     # Move above block (offset accounts for gripper geometry)
-    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, waypoints=-1, waypoint_scale=.5)
-    
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, quat = in_quat, waypoints=-1, waypoint_scale=.5)
+
     # Lower to block
-    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.07]) + GRIPPER_EE_OFFSET, 
-                   tolerance=0.001, attached_object=b, waypoints=30)
-    
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.08]) + GRIPPER_EE_OFFSET, quat = in_quat, 
+                    tolerance=0.001, attached_object=b, waypoints=30)
+
     # Grasp block
     close_gripper(franka, scene)
-    
+
     # Lift block
-    move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, 
-                     attached_object=b, tolerance=0.01, waypoints=80)
+    move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, quat = in_quat, 
+                        attached_object=b, tolerance=0.01, waypoints=80)
 
 def PLACE(block, blocks_state, franka, scene):
     """
@@ -105,7 +108,7 @@ def PLACE(block, blocks_state, franka, scene):
     move_while_closed(franka, scene, np.array([0.3, 0.3, 0.23]), attached_object=b, waypoints=70)
     
     # Lower to table
-    move_while_closed(franka, scene, np.array([0.3, 0.3, 0.18]), attached_object=b, waypoints=70)
+    move_while_closed(franka, scene, np.array([0.3, 0.3, 0.13]), attached_object=b, waypoints=70)
     
     # Release block
     open_gripper(franka, scene)
@@ -124,7 +127,7 @@ def open_gripper_slight(franka, scene):
     motors_dof = np.arange(7)
     fingers_dof = np.arange(7, 9)
     q_init = np.array(franka.get_qpos(), dtype=np.float64)
-    target_gripper_pos = np.array([0.025, 0.025], dtype=np.float64)
+    target_gripper_pos = np.array([0.02, 0.02], dtype=np.float64)
     
     # Stabilize arm position
     for _ in range(5):
@@ -140,12 +143,12 @@ def open_gripper_slight(franka, scene):
 
 
 def PLACE_SPECIFIC_ORIENTED(block, blocks_state, franka, scene):
-    print("Place_Specific_Oriented")
+    # print("Place_Specific_Oriented")
     b = blocks_state[block]
 
     r = ((0.04/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
     theta_block = 0
-    position = np.array([0.3+r*math.cos(theta_block), 0.3+r*math.sin(theta_block), 0.0])
+    position = np.array([0.5+r*math.cos(theta_block), 0.3+r*math.sin(theta_block), 0.0])
     quat = np.array(R.from_euler('xyz', [math.pi,0.0,theta_block]).as_quat(scalar_first=True))
 
 
@@ -184,7 +187,7 @@ def PLACE_RELATIVE_ORIENTED(block1, block2, blocks_state, franka, scene):
     open_gripper(franka, scene)
 
 def STACK_RELATIVE_ORIENTED(block1, block2, blocks_state, franka, scene):
-    print("Place_Specific_Oriented")
+    # print("Place_Specific_Oriented")
     place_b = blocks_state[block1]
     ref_b = blocks_state[block2]
 
