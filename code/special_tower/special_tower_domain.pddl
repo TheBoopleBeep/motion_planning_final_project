@@ -13,7 +13,6 @@
     (oriented ?x - block) ; block x is oriented correctly
     (relative ?x - block ?y - block) ; block x is placed relative to block y in special tower formation (clockwise)
     (relative_layered ?x - block ?y - block ?z - block) ; block x is on the second layer relative to y and stacked between y and z
-    (reckoned ?x - block) ; block x is placed in a pre-determined position
   )
   
   (:action pick
@@ -25,7 +24,7 @@
   (:action place_specific_oriented
     :parameters (?x - block)
     :precondition (holding ?x)
-    :effect (and (clear ?x) (reckoned ?x) (oriented ?x) (placed ?x) (handempty) (not (holding ?x)))  ; x is clear, oriented right in the correct position and not held
+    :effect (and (clear ?x) (oriented ?x) (placed ?x) (handempty) (not (holding ?x)))  ; x is clear, oriented right in the correct position and not held
   )
 
   (:action place_relative_oriented

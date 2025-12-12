@@ -81,41 +81,28 @@ def PICK(block, blocks_state, franka, scene):
     b = blocks_state[block]
     bpos = np.asarray(b.get_pos(), dtype=np.float64)
     bquat = np.asarray(b.get_quat(), dtype=np.float64)
-    base_zangle = R.from_quat(bquat, scalar_first=True).as_euler('xyz')[2]
+    zangle = R.from_quat(bquat, scalar_first=True).as_euler('xyz')[2]
     
-    # Try up to 4 orientations (0°, 90°, 180°, 270°) 
-    for angle_attempt in range(4): # Unfortunately, this doesn't actually work. Would be nice if there's a way to implement.
-        zangle = base_zangle + (angle_attempt * math.pi / 2)  # Add 0, 90, 180, 270 degrees
-        in_quat = R.from_euler('xyz', np.array([math.pi, 0, zangle])).as_quat(scalar_first=True)
+
+    in_quat = R.from_euler('xyz', np.array([math.pi, 0, zangle])).as_quat(scalar_first=True)
         
-        print(f"\n[PICK] Attempt {angle_attempt+1}/4 with z-angle offset: {math.degrees(angle_attempt * math.pi / 2):.0f}°")
-        
-        try:
-            # Move above block (offset accounts for gripper geometry)
-            move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.35]) + GRIPPER_EE_OFFSET, 
-                          quat=in_quat, waypoints=-1, waypoint_scale=.5)
+    # Move above block (offset accounts for gripper geometry)
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.35]) + GRIPPER_EE_OFFSET, 
+                    quat=in_quat, waypoints=-1, waypoint_scale=.5)
 
-            # Lower to block
-            move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.08]) + GRIPPER_EE_OFFSET, 
-                          quat=in_quat, tolerance=0.001, attached_object=b, waypoints=30)
+    # Lower to block
+    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.08]) + GRIPPER_EE_OFFSET, 
+                    quat=in_quat, tolerance=0.001, attached_object=b, waypoints=30)
 
-            # Grasp block
-            close_gripper(franka, scene)
+    # Grasp block
+    close_gripper(franka, scene)
 
-            # Lift block
-            move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, 
-                            quat=in_quat, attached_object=b, tolerance=0.01, waypoints=80)
-            
-            print(f"[PICK] ✓ Successfully picked up block with z-angle offset: {math.degrees(angle_attempt * math.pi / 2):.0f}°")
-            return
-            
-        except RuntimeError as e:
-            if angle_attempt < 3:
-                print(f"[PICK] ✗ Planning failed with z-angle offset {math.degrees(angle_attempt * math.pi / 2):.0f}°, retrying...")
-                continue
-            else:
-                print(f"[PICK] ✗ All 4 angle attempts failed for block {block}")
-                raise
+    # Lift block
+    move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, 
+                    quat=in_quat, attached_object=b, tolerance=0.01, waypoints=80)
+    
+    return
+
 
 def PLACE(block, blocks_state, franka, scene):
     """
