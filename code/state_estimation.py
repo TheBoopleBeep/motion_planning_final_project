@@ -50,6 +50,7 @@ class specialCube:
     relative_layered: str = None # block x is on the second layer relative to y and stacked between y and z
     oriented: bool = False # block x is oriented correctly
     placed: bool = False # block x is in the right place
+    clear: bool = False # block x is clear to pickup, no block above
 
 @dataclass
 class TwoTowerCube:
@@ -244,17 +245,19 @@ class StateEstimation:
                         pddl_facts.append(f"(placedright {block.name})")
             case "special_tower":
                 for block in self.block_info:
-                    if block.oriented is not None:
+                    if block.oriented:
                         pddl_facts.append(f"(oriented {block.name})")
-                    if block.placed is not None:
+                    if block.placed:
                         pddl_facts.append(f"(placed {block.name})")
+                    if block.clear:
+                        pddl_facts.append(f"(clear {block.name})")
                     if block.relative is not None:
                         pddl_facts.append(f"(relative {block.name} {block.relative})") # block 1 is placed relative to 2
                     if block.relative_layered is not None:
                         # It should be okay to add "vague_block" here. 
                         # In the pddl, that block is only used initially to see if there's a block already placed there and make a block stackable
                         # Since this being ran means a block is already stacked, that condition must be already satisfied
-                        pddl_facts.append(f"(relative_layered {block.name} {block.relative_layered} vague_block )") # block 1 is placed relative to 2, 3rd block does not matter here
+                        pddl_facts.append(f"(relative_layered {block.name} {block.relative_layered} {block.relative} )") # block 1 is placed relative to 2, 3rd block does not matter here
                     
                 pass
             case _:
@@ -464,6 +467,7 @@ class StateEstimation:
             block.relative_layered = None
             block.placed = False
             block.oriented = False
+            block.clear = True
         
         # Calculate neighbor relationships
         for i in range(len(self.block_info)):
@@ -556,7 +560,7 @@ class StateEstimation:
 
             return [target_position, target_quat]
 
-    def find_special_tower_relativity(self, check_block, ref_block):
+    def find_special_tower_relativity(self, ref_block, check_block):
         """
         Check relative placement of check_block with respect to ref_block and update their states.
         
@@ -564,6 +568,30 @@ class StateEstimation:
             check_block: specialCube to check
             ref_block: specialCube to check as reference
         """
+        """
+        Check if top_block is stacked on bottom_block and update their states.
+        
+        Parameters:
+            top_block: TowerCube potentially on top
+            bottom_block: TowerCube potentially on bottom
+        """
+        # Check horizontal alignment (x and y within threshold)
+        horizontal_threshold = 0.03  # 3 cm tolerance
+        horizontal_aligned = (
+            abs(ref_block.position[0] - check_block.position[0]) < horizontal_threshold and
+            abs(ref_block.position[1] - check_block.position[1]) < horizontal_threshold
+        )
+        
+        # Check vertical alignment (z difference equals block height)
+        block_height = 0.04  # 4 cm block height
+        vertical_threshold = 0.002  # 2 mm tolerance
+        z_diff = ref_block.position[2] - check_block.position[2]
+        vertical_aligned = abs(z_diff - block_height) < vertical_threshold
+        
+        # Update stacking relationship if aligned
+        if horizontal_aligned and vertical_aligned:
+            check_block.clear = False
+
         check_block_pos = check_block.position
 
         check_block_z_angle = R.from_quat(check_block.quat, scalar_first=True).as_euler('xyz')[2]
@@ -573,9 +601,12 @@ class StateEstimation:
         expected_z = R.from_quat(expected_quat, scalar_first=True).as_euler('xyz')[2]
 
         relative_pos_dif = np.linalg.norm(check_block_pos - expected_pos)
-        relative_z_dif = abs(expected_z - check_block_z_angle)
+        # print("relative_pos_dif: ",relative_pos_dif, " for ref block: ",ref_block.name," and check block: ",check_block.name)
 
-        if relative_pos_dif < 0.08 and relative_z_dif < 3: # 0.15 on the norm is a vague number. If it doesn't work out we can edit.
+        relative_z_dif = abs(expected_z - check_block_z_angle)
+        # print("relative_z_dif: ",relative_z_dif, " for ref block: ",ref_block.name," and check block: ",check_block.name)
+
+        if relative_pos_dif < 0.06 and relative_z_dif < math.pi/12: # norm is a vague number. If it doesn't work out we can edit.
             check_block.relative = ref_block.name
             check_block.placed = True
             check_block.oriented = True
@@ -587,9 +618,12 @@ class StateEstimation:
         expected_z_stacked = R.from_quat(expected_quat_stacked, scalar_first=True).as_euler('xyz')[2]
 
         stacked_pos_dif = np.linalg.norm(check_block_pos - expected_pos_stacked)
+        print("stacked_pos_dif: ",stacked_pos_dif, " for ref block: ",ref_block.name," and check block: ",check_block.name)
         stacked_z_dif = expected_z_stacked - check_block_z_angle
+        print("stacked_z_dif: ",stacked_z_dif, " for ref block: ",ref_block.name," and check block: ",check_block.name)
 
-        if stacked_pos_dif < 0.08 and stacked_z_dif < 3:
+
+        if stacked_pos_dif < 0.06 and stacked_z_dif < math.pi/12:
             check_block.relative_layered = ref_block.name
             check_block.placed = True
             check_block.oriented = True
@@ -606,10 +640,10 @@ class StateEstimation:
             if block.name == "r1":
                 r = ((0.04/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
                 theta_block = 0
-                position = np.array([0.3+r*math.cos(theta_block), 0.3+r*math.sin(theta_block), 0.0])
+                position = np.array([0.5+r*math.cos(theta_block), 0.3+r*math.sin(theta_block), 0.0])
                 z_angle = R.from_quat(block.quat, scalar_first=True).as_euler('xyz')[2]
 
-                if np.linalg.norm(block.position - position) < 0.08:
+                if np.linalg.norm(block.position - position) < 0.06:
                     block.placed = True
                 else:
                     block.placed = False
@@ -620,10 +654,10 @@ class StateEstimation:
                     block.oriented = False
             
 
-
     ####
     ## PDDL PLANNING AND STATE COMPARISON METHODS
     ####
+
     def compare_states(self, predicted_facts, franka):
         """
         Compare predicted state (from action model) with actual observed state.
@@ -693,8 +727,10 @@ class StateEstimation:
         Returns:
             String containing the PDDL problem definition
         """
+        
         # Get block names and save as instance variable
         self.blocknames = [block.name for block in self.block_info]
+        print("blocknames: ",self.blocknames," for problem: ",self.problem)
         
         # Start building PDDL problem with task-specific naming
         if self.problem == "adjacency":
@@ -719,6 +755,7 @@ class StateEstimation:
         # Initial state
         pddl += "  (:init\n"
         init_facts = self.parse_state_to_pddl()
+        print(init_facts)
         for fact in init_facts:
             pddl += f"    {fact}\n"
         pddl += "  )\n\n"
@@ -804,8 +841,17 @@ class StateEstimation:
             self.special_tower_state_estimation()
             goal_config = [
                 ('oriented', 'r1'),
+                ('placed', 'r1'),
                 ('relative', 'b1', 'r1'),
-                ('relative_layered', 'b2', 'r1', 'b1')
+                ('relative', 'y1', 'b1'),
+                ('relative', 'g1', 'y1'),
+                ('relative', 'o1', 'g1'),
+                ('relative_layered', 'b2', 'r1', 'b1'),
+                ('relative_layered', 'y2', 'b1', 'y1'),
+                ('relative_layered', 'g2', 'y1', 'g1'),
+                ('relative_layered', 'o2', 'g1', 'o1'),
+                ('relative_layered', 'r2', 'o1', 'r1')
+
             ]
         else:
             # Default to adjacency
@@ -827,6 +873,7 @@ class StateEstimation:
             with open(output_problem_file, 'w') as f:
                 f.write(problem_content)
             print(f"Generated PDDL problem file: {output_problem_file}")
+
         
         print("Current state:")
         for block in self.block_info:
@@ -837,7 +884,7 @@ class StateEstimation:
             elif self.problem == "towers":
                 print(f"  {block.name}: on={block.on}, clear={block.clear}, ontable={block.ontable}, placedleft={block.placedleft}, placedright={block.placedright}")
             elif self.problem == "special_tower":
-                print(f" {block.name}: placed={block.placed}, oriented={block.oriented}, relative={block.relative}, relative_layered={block.relative_layered}")
+                print(f" {block.name}: clear={block.clear}, placed={block.placed}, oriented={block.oriented}, relative={block.relative}, relative_layered={block.relative_layered}")
             else:
                 print(f"  {block.name}: NNeighbor={block.NNeighbor}, SNeighbor={block.SNeighbor}, ENeighbor={block.ENeighbor}, WNeighbor={block.WNeighbor}, longDiag={block.longDiag}, placed={block.placed}")
         # Print gripper state
