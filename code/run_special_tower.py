@@ -76,26 +76,46 @@ def STACK(block1, block2, blocks_state, franka, scene):
 def PICK(block, blocks_state, franka, scene):
     """
     Pick up a block from its current position.
+    Retries with 90-degree z-angle rotations if planning fails.
     """
     b = blocks_state[block]
     bpos = np.asarray(b.get_pos(), dtype=np.float64)
     bquat = np.asarray(b.get_quat(), dtype=np.float64)
-    zangle = R.from_quat(bquat, scalar_first=True).as_euler('xyz')[2]
-    in_quat = R.from_euler('xyz',np.array([math.pi,0,zangle])).as_quat(scalar_first=True)
+    base_zangle = R.from_quat(bquat, scalar_first=True).as_euler('xyz')[2]
+    
+    # Try up to 4 orientations (0°, 90°, 180°, 270°) 
+    for angle_attempt in range(4): # Unfortunately, this doesn't actually work. Would be nice if there's a way to implement.
+        zangle = base_zangle + (angle_attempt * math.pi / 2)  # Add 0, 90, 180, 270 degrees
+        in_quat = R.from_euler('xyz', np.array([math.pi, 0, zangle])).as_quat(scalar_first=True)
+        
+        print(f"\n[PICK] Attempt {angle_attempt+1}/4 with z-angle offset: {math.degrees(angle_attempt * math.pi / 2):.0f}°")
+        
+        try:
+            # Move above block (offset accounts for gripper geometry)
+            move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.35]) + GRIPPER_EE_OFFSET, 
+                          quat=in_quat, waypoints=-1, waypoint_scale=.5)
 
-    # Move above block (offset accounts for gripper geometry)
-    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, quat = in_quat, waypoints=-1, waypoint_scale=.5)
+            # Lower to block
+            move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.08]) + GRIPPER_EE_OFFSET, 
+                          quat=in_quat, tolerance=0.001, attached_object=b, waypoints=30)
 
-    # Lower to block
-    move_while_open(franka, scene, bpos + np.array([0.005, 0, 0.08]) + GRIPPER_EE_OFFSET, quat = in_quat, 
-                    tolerance=0.001, attached_object=b, waypoints=30)
+            # Grasp block
+            close_gripper(franka, scene)
 
-    # Grasp block
-    close_gripper(franka, scene)
-
-    # Lift block
-    move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, quat = in_quat, 
-                        attached_object=b, tolerance=0.01, waypoints=80)
+            # Lift block
+            move_while_closed(franka, scene, bpos + np.array([0.005, 0, 0.25]) + GRIPPER_EE_OFFSET, 
+                            quat=in_quat, attached_object=b, tolerance=0.01, waypoints=80)
+            
+            print(f"[PICK] ✓ Successfully picked up block with z-angle offset: {math.degrees(angle_attempt * math.pi / 2):.0f}°")
+            return
+            
+        except RuntimeError as e:
+            if angle_attempt < 3:
+                print(f"[PICK] ✗ Planning failed with z-angle offset {math.degrees(angle_attempt * math.pi / 2):.0f}°, retrying...")
+                continue
+            else:
+                print(f"[PICK] ✗ All 4 angle attempts failed for block {block}")
+                raise
 
 def PLACE(block, blocks_state, franka, scene):
     """
@@ -129,15 +149,15 @@ def open_gripper_slight(franka, scene):
     q_init = np.array(franka.get_qpos(), dtype=np.float64)
     target_gripper_pos = np.array([0.02, 0.02], dtype=np.float64)
     
-    # Stabilize arm position
-    for _ in range(5):
-        franka.control_dofs_position(q_init[:7], motors_dof)
-        franka.control_dofs_position(q_init[-2:], fingers_dof)
-        scene.step()
+    # # Stabilize arm position
+    # for _ in range(5):
+    #     franka.control_dofs_position(q_init[:7], motors_dof)
+    #     franka.control_dofs_position(q_init[-2:], fingers_dof)
+    #     scene.step()
     
     # Open gripper to target position
     for _ in range(30):
-        franka.control_dofs_position(q_init[:7], motors_dof)
+        # franka.control_dofs_position(q_init[:7], motors_dof)
         franka.control_dofs_position(target_gripper_pos, fingers_dof)
         scene.step()
 
@@ -148,21 +168,23 @@ def PLACE_SPECIFIC_ORIENTED(block, blocks_state, franka, scene):
 
     r = ((0.04/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
     theta_block = 0
-    position = np.array([0.5+r*math.cos(theta_block), 0.3+r*math.sin(theta_block), 0.0])
+    position = np.array([0.6+r*math.cos(theta_block), 0.3+r*math.sin(theta_block), 0.0])
     quat = np.array(R.from_euler('xyz', [math.pi,0.0,theta_block]).as_quat(scalar_first=True))
+    x_ee_adjust = 0.003*math.cos(theta_block)
+    y_ee_adjust = 0.003*math.sin(theta_block)
 
 
     #move above target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.25]), quat=quat, attached_object=b)
+    move_while_closed(franka, scene, position + np.array([x_ee_adjust, y_ee_adjust, 0.35]), quat=quat, attached_object=b, waypoints=-1)
 
     # #lower to target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.13]), quat=quat, attached_object=b)
+    move_while_closed(franka, scene, position + np.array([x_ee_adjust, y_ee_adjust, 0.14]), quat=quat, attached_object=b, waypoints=-1)
 
     # #release
     open_gripper_slight(franka, scene)
 
     # #move up
-    move_while_open(franka, scene, position + np.array([0, 0, 0.3]), quat=quat, attached_object=b)
+    move_while_open(franka, scene, position + np.array([x_ee_adjust, y_ee_adjust, 0.3]), quat=quat, attached_object=b)
 
     open_gripper(franka, scene)
 
@@ -171,18 +193,25 @@ def PLACE_RELATIVE_ORIENTED(block1, block2, blocks_state, franka, scene):
     place_b = blocks_state[block1]
     ref_b = blocks_state[block2]
 
+
     [position, quat] = compute_relative(ref_b, False)
+
+    zangle = R.from_quat(quat, scalar_first=True).as_euler("xyz")[2]
+
+    x_ee_adjust = 0.003*math.cos(zangle)
+    y_ee_adjust = 0.003*math.sin(zangle)
+
     #move above target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.25]), quat=quat, attached_object=place_b)
+    move_while_closed(franka, scene, position + np.array([x_ee_adjust, y_ee_adjust, 0.35]), quat=quat, attached_object=place_b)
 
     # #lower to target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.13]), quat=quat, attached_object=place_b)
+    move_while_closed(franka, scene, position + np.array([x_ee_adjust, y_ee_adjust, 0.14]), quat=quat, attached_object=place_b, tolerance = 0.001, waypoints=100)
 
     # #release
     open_gripper_slight(franka, scene)
 
     # #move up
-    move_while_open(franka, scene, position + np.array([0, 0, 0.3]), quat=quat, attached_object=place_b)
+    move_while_open(franka, scene, position + np.array([x_ee_adjust, y_ee_adjust, 0.3]), quat=quat, attached_object=place_b)
 
     open_gripper(franka, scene)
 
@@ -193,17 +222,22 @@ def STACK_RELATIVE_ORIENTED(block1, block2, blocks_state, franka, scene):
 
     [position, quat] = compute_relative(ref_b, True)
 
+    zangle = R.from_quat(quat, scalar_first=True).as_euler("xyz")[2]
+
+    x_ee_adjust = 0.003*math.cos(zangle)
+    y_ee_adjust = 0.003*math.sin(zangle)
+
     #move above target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.25]), quat=quat, attached_object=place_b)
+    move_while_closed(franka, scene, position + np.array([x_ee_adjust, y_ee_adjust, 0.35]), quat=quat, attached_object=place_b)
 
     # #lower to target position
-    move_while_closed(franka, scene, position + np.array([0, 0, 0.13]), quat=quat, attached_object=place_b)
+    move_while_closed(franka, scene, position + np.array([x_ee_adjust, y_ee_adjust, 0.16]), quat=quat, attached_object=place_b, tolerance = 0.001,waypoints=100)
 
     # #release
     open_gripper_slight(franka, scene)
 
     # #move up
-    move_while_open(franka, scene, position + np.array([0, 0, 0.3]), quat=quat, attached_object=place_b)
+    move_while_open(franka, scene, position + np.array([x_ee_adjust, y_ee_adjust, 0.3]), quat=quat, attached_object=place_b)
 
     open_gripper(franka, scene)
 
@@ -225,9 +259,16 @@ def compute_relative(ref_block_state, stack=False):
     ref_block_quat = np.asarray(ref_block_state.get_quat(), dtype=np.float64)
 
     # Calculate position and quaternion. See Jason's notes if curious on how.
-    block_width = 0.04 # adjustable value to create extra space if desired
-    w = ((block_width/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180))))
-    theta_dif = 72*(math.pi/180)  # 72 degrees in radians
+
+    block_width = 0.04 
+    if stack == False:
+        w = ((block_width/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180))))
+        theta_dif = 72*(math.pi/180)  # 72 degrees in radians
+
+    else:
+        w = ((block_width/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180))))/2
+        theta_dif = 36*(math.pi/180)  # 72 degrees in radians
+
     r =  (w/2) / math.sin(theta_dif/2)
 
     theta2 = math.acos((w/2)/r)*(180/math.pi)
@@ -278,17 +319,31 @@ def compute_relative(ref_block_state, stack=False):
         # print("target_quat before: ",target_quat)
 
     else: # block is stacking onto the second layer. Increase height and adjust values
-        target_position = np.array([ref_block_pos[0]+(x_dif/2), ref_block_pos[1]+(y_dif/2), ref_block_pos[2]+0.04])
+        target_position = np.array([ref_block_pos[0]+(x_dif), ref_block_pos[1]+(y_dif), ref_block_pos[2]+0.04])
 
         print("target_position for place_relative_oriented: ",target_position)
-        target_quat = np.array(R.from_euler('xyz', [math.pi,0.0,theta_dif/2]).as_quat(scalar_first=True)) 
+        target_quat = np.array(R.from_euler('xyz', [math.pi,0.0,theta_dif]).as_quat(scalar_first=True)) 
         # print("target_quat before: ",target_quat)
 
-    # quaternion multiplication to combine orientations
-    target_quat[0] = ref_block_quat[0] * target_quat[0] - ref_block_quat[1] * target_quat[1] - ref_block_quat[2] * target_quat[2] - ref_block_quat[3] * target_quat[3]
-    target_quat[1] = ref_block_quat[0] * target_quat[1] + ref_block_quat[1] * target_quat[0] + ref_block_quat[2] * target_quat[3] - ref_block_quat[3] * target_quat[2]
-    target_quat[2] = ref_block_quat[0] * target_quat[2] - ref_block_quat[1] * target_quat[3] + ref_block_quat[2] * target_quat[0] + ref_block_quat[3] * target_quat[1]
-    target_quat[3] = ref_block_quat[0] * target_quat[3] + ref_block_quat[1] * target_quat[2] - ref_block_quat[2] * target_quat[1] + ref_block_quat[3] * target_quat[0]
+    # Store the delta quaternion before multiplication
+    delta_quat = target_quat.copy()
+    
+    # quaternion multiplication to combine orientations: result = ref_block_quat * delta_quat
+    target_quat[0] = ref_block_quat[0] * delta_quat[0] - ref_block_quat[1] * delta_quat[1] - ref_block_quat[2] * delta_quat[2] - ref_block_quat[3] * delta_quat[3]
+    target_quat[1] = ref_block_quat[0] * delta_quat[1] + ref_block_quat[1] * delta_quat[0] + ref_block_quat[2] * delta_quat[3] - ref_block_quat[3] * delta_quat[2]
+    target_quat[2] = ref_block_quat[0] * delta_quat[2] - ref_block_quat[1] * delta_quat[3] + ref_block_quat[2] * delta_quat[0] + ref_block_quat[3] * delta_quat[1]
+    target_quat[3] = ref_block_quat[0] * delta_quat[3] + ref_block_quat[1] * delta_quat[2] - ref_block_quat[2] * delta_quat[1] + ref_block_quat[3] * delta_quat[0]
+    
+    # Ensure quaternion is in the correct hemisphere to avoid wrapping
+    # Normalize the quaternion first
+    quat_norm = np.linalg.norm(target_quat)
+    if quat_norm > 0:
+        target_quat = target_quat / quat_norm
+    
+    # If w component is negative, flip the entire quaternion to ensure w >= 0
+    # This ensures we take the shorter path in quaternion space
+    if target_quat[0] < 0:
+        target_quat = -target_quat
 
     return [target_position, target_quat]
 

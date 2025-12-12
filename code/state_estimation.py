@@ -51,6 +51,7 @@ class specialCube:
     oriented: bool = False # block x is oriented correctly
     placed: bool = False # block x is in the right place
     clear: bool = False # block x is clear to pickup, no block above
+    side_stacked: str = None # bottom side-stacked block for a layered block
 
 @dataclass
 class TwoTowerCube:
@@ -254,10 +255,7 @@ class StateEstimation:
                     if block.relative is not None:
                         pddl_facts.append(f"(relative {block.name} {block.relative})") # block 1 is placed relative to 2
                     if block.relative_layered is not None:
-                        # It should be okay to add "vague_block" here. 
-                        # In the pddl, that block is only used initially to see if there's a block already placed there and make a block stackable
-                        # Since this being ran means a block is already stacked, that condition must be already satisfied
-                        pddl_facts.append(f"(relative_layered {block.name} {block.relative_layered} {block.relative} )") # block 1 is placed relative to 2, 3rd block does not matter here
+                        pddl_facts.append(f"(relative_layered {block.name} {block.relative_layered} {block.side_stacked} )")
                     
                 pass
             case _:
@@ -468,12 +466,14 @@ class StateEstimation:
             block.placed = False
             block.oriented = False
             block.clear = True
+            block.side_stacked = None
         
         # Calculate neighbor relationships
         for i in range(len(self.block_info)):
             for j in range(i,len(self.block_info)):
                 if i != j:
                     self.find_special_tower_relativity(self.block_info[i], self.block_info[j])
+                    self.find_special_tower_relativity(self.block_info[j], self.block_info[i])
 
     def compute_relative_world(self, ref_block, stack=False):
             """
@@ -493,9 +493,15 @@ class StateEstimation:
             ref_block_quat = ref_block.quat
 
             # Calculate position and quaternion. See Jason's notes if curious on how.
-            block_width = 0.04 # adjustable value to create extra space if desired
-            w = ((block_width/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180))))
-            theta_dif = 72*(math.pi/180)  # 72 degrees in radians
+            block_width = 0.04 
+            if stack == False:
+                w = ((block_width/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180))))
+                theta_dif = 72*(math.pi/180)  # 72 degrees in radians
+
+            else:
+                w = ((block_width/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180))))/2
+                theta_dif = 36*(math.pi/180)  # 72 degrees in radians
+
             r =  (w/2) / math.sin(theta_dif/2)
 
             theta2 = math.acos((w/2)/r)*(180/math.pi)
@@ -504,7 +510,7 @@ class StateEstimation:
             if beta < 0:
                 beta = 360 + beta # To account for angles considered negative.
 
-            # print("beta: ",beta)
+            print("beta: ",beta)
             
             if (beta-theta2) < 90:
                 lamb = 180 - beta
@@ -546,21 +552,35 @@ class StateEstimation:
                 # print("target_quat before: ",target_quat)
 
             else: # block is stacking onto the second layer. Increase height and adjust values
-                target_position = np.array([ref_block_pos[0]+(x_dif/2), ref_block_pos[1]+(y_dif/2), ref_block_pos[2]+0.04])
+                target_position = np.array([ref_block_pos[0]+(x_dif), ref_block_pos[1]+(y_dif), ref_block_pos[2]+0.04])
 
-                # print("target_position for place_relative_oriented: ",target_position)
-                target_quat = np.array(R.from_euler('xyz', [math.pi,0.0,theta_dif/2]).as_quat(scalar_first=True)) 
+                print("target_position for place_relative_oriented: ",target_position)
+                target_quat = np.array(R.from_euler('xyz', [math.pi,0.0,theta_dif]).as_quat(scalar_first=True)) 
                 # print("target_quat before: ",target_quat)
 
-            # quaternion multiplication to combine orientations
-            target_quat[0] = ref_block_quat[0] * target_quat[0] - ref_block_quat[1] * target_quat[1] - ref_block_quat[2] * target_quat[2] - ref_block_quat[3] * target_quat[3]
-            target_quat[1] = ref_block_quat[0] * target_quat[1] + ref_block_quat[1] * target_quat[0] + ref_block_quat[2] * target_quat[3] - ref_block_quat[3] * target_quat[2]
-            target_quat[2] = ref_block_quat[0] * target_quat[2] - ref_block_quat[1] * target_quat[3] + ref_block_quat[2] * target_quat[0] + ref_block_quat[3] * target_quat[1]
-            target_quat[3] = ref_block_quat[0] * target_quat[3] + ref_block_quat[1] * target_quat[2] - ref_block_quat[2] * target_quat[1] + ref_block_quat[3] * target_quat[0]
+            # Store the delta quaternion before multiplication
+            delta_quat = target_quat.copy()
+            
+            # quaternion multiplication to combine orientations: result = ref_block_quat * delta_quat
+            target_quat[0] = ref_block_quat[0] * delta_quat[0] - ref_block_quat[1] * delta_quat[1] - ref_block_quat[2] * delta_quat[2] - ref_block_quat[3] * delta_quat[3]
+            target_quat[1] = ref_block_quat[0] * delta_quat[1] + ref_block_quat[1] * delta_quat[0] + ref_block_quat[2] * delta_quat[3] - ref_block_quat[3] * delta_quat[2]
+            target_quat[2] = ref_block_quat[0] * delta_quat[2] - ref_block_quat[1] * delta_quat[3] + ref_block_quat[2] * delta_quat[0] + ref_block_quat[3] * delta_quat[1]
+            target_quat[3] = ref_block_quat[0] * delta_quat[3] + ref_block_quat[1] * delta_quat[2] - ref_block_quat[2] * delta_quat[1] + ref_block_quat[3] * delta_quat[0]
+            
+            # Ensure quaternion is in the correct hemisphere to avoid wrapping
+            # Normalize the quaternion first
+            quat_norm = np.linalg.norm(target_quat)
+            if quat_norm > 0:
+                target_quat = target_quat / quat_norm
+            
+            # If w component is negative, flip the entire quaternion to ensure w >= 0
+            # This ensures we take the shorter path in quaternion space
+            if target_quat[0] < 0:
+                target_quat = -target_quat
 
             return [target_position, target_quat]
 
-    def find_special_tower_relativity(self, ref_block, check_block):
+    def find_special_tower_relativity(self, check_block, ref_block):
         """
         Check relative placement of check_block with respect to ref_block and update their states.
         
@@ -606,11 +626,11 @@ class StateEstimation:
         relative_z_dif = abs(expected_z - check_block_z_angle)
         # print("relative_z_dif: ",relative_z_dif, " for ref block: ",ref_block.name," and check block: ",check_block.name)
 
-        if relative_pos_dif < 0.06 and relative_z_dif < math.pi/12: # norm is a vague number. If it doesn't work out we can edit.
+        if relative_pos_dif < 0.01 and relative_z_dif < math.pi/16:
             check_block.relative = ref_block.name
             check_block.placed = True
             check_block.oriented = True
-            return # return to avoid access computation
+            return True
 
 
         # Check for relative stacked placement
@@ -623,14 +643,46 @@ class StateEstimation:
         print("stacked_z_dif: ",stacked_z_dif, " for ref block: ",ref_block.name," and check block: ",check_block.name)
 
 
-        if stacked_pos_dif < 0.06 and stacked_z_dif < math.pi/12:
+        if stacked_pos_dif < 0.02 and stacked_z_dif < math.pi/16: # norm of 0.03 and within 15 degrees difference
             check_block.relative_layered = ref_block.name
             check_block.placed = True
             check_block.oriented = True
-            return
+            relative_block_to_ref = self.find_relative_block(ref_block)
+            check_block.side_stacked = relative_block_to_ref.name
+            return False
+        
+        return False
         
         
-                    
+        
+    def find_relative_block(self, ref_block, visited=None):
+        """
+        Find a block that is placed relative to the ref_block.
+        Uses a visited set to prevent infinite recursion.
+        
+        Parameters:
+            ref_block: the reference block to find a relative block for
+            visited: set of block names already checked (for recursion prevention)
+        """
+        if visited is None:
+            visited = set()
+        
+        # Add ref_block to visited to prevent checking it again
+        visited.add(ref_block.name)
+        
+        for i in range(len(self.block_info)):
+            block = self.block_info[i]
+            # Skip if it's the ref_block or already visited
+            if block.name in visited:
+                continue
+            
+            # Check if this block has the desired relative relationship
+            if block.relative == ref_block.name:
+                return block
+        
+        # If no direct match found, return None instead of recursing
+        return None
+
 
     def check_initial_placement(self):
         """
@@ -640,7 +692,7 @@ class StateEstimation:
             if block.name == "r1":
                 r = ((0.04/math.cos(math.pi/4)) / (math.cos(9*(math.pi/180)))) / math.cos(54*(math.pi/180))
                 theta_block = 0
-                position = np.array([0.5+r*math.cos(theta_block), 0.3+r*math.sin(theta_block), 0.0])
+                position = np.array([0.6+r*math.cos(theta_block), 0.3+r*math.sin(theta_block), 0.0])
                 z_angle = R.from_quat(block.quat, scalar_first=True).as_euler('xyz')[2]
 
                 if np.linalg.norm(block.position - position) < 0.06:
@@ -767,6 +819,8 @@ class StateEstimation:
                 pddl += f"    ({goal_fact[0]} {goal_fact[1]} {goal_fact[2]})\n"
             elif len(goal_fact) == 2:  # e.g., ('clear', 'b1')
                 pddl += f"    ({goal_fact[0]} {goal_fact[1]})\n"
+            elif len(goal_fact) == 4:  # e.g., ('relative_layered', 'b2', 'r1', 'b1')
+                pddl += f"    ({goal_fact[0]} {goal_fact[1]} {goal_fact[2]} {goal_fact[3]})\n"
         pddl += "  ))\n"
         pddl += ")\n"
         
@@ -884,7 +938,7 @@ class StateEstimation:
             elif self.problem == "towers":
                 print(f"  {block.name}: on={block.on}, clear={block.clear}, ontable={block.ontable}, placedleft={block.placedleft}, placedright={block.placedright}")
             elif self.problem == "special_tower":
-                print(f" {block.name}: clear={block.clear}, placed={block.placed}, oriented={block.oriented}, relative={block.relative}, relative_layered={block.relative_layered}")
+                print(f" {block.name}: clear={block.clear}, placed={block.placed}, oriented={block.oriented}, relative={block.relative}, relative_layered={block.relative_layered}, side_stacked={block.side_stacked}")
             else:
                 print(f"  {block.name}: NNeighbor={block.NNeighbor}, SNeighbor={block.SNeighbor}, ENeighbor={block.ENeighbor}, WNeighbor={block.WNeighbor}, longDiag={block.longDiag}, placed={block.placed}")
         # Print gripper state

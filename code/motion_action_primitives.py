@@ -5,7 +5,7 @@ import genesis as gs
 from planning import PlannerInterface
 
 # Constants
-GRIPPER_CLOSE_FORCE = -2.0
+GRIPPER_CLOSE_FORCE = -3.0
 GRIPPER_OPEN_POSITION = 0.04
 JACOBIAN_CONVERGENCE_GAIN = 4.0
 MAX_JOINT_CORRECTION = 0.02  # radians

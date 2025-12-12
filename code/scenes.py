@@ -209,16 +209,19 @@ def create_scene_special_tower() -> Tuple[Any, Any, Dict[str, Any], Any]:
     plane = scene.add_entity(gs.morphs.Plane())
     # add some random noise up to 5 cm in x/y
 
-    posR1 = _rand_xy((0.65, 0.0, 0.02))
-    posG1 = _rand_xy((0.65, -0.4, 0.02))
-    posB1 = _rand_xy((0.65, -0.2, 0.02))
-    posY1 = _rand_xy((0.45, 0.0, 0.02))
-    posO1 = _rand_xy((0.45, -0.2, 0.02))
-    posR2 = _rand_xy((0.25, -0.4, 0.02))
-    posG2 = _rand_xy((0.45, -0.6, 0.02))
-    posB2 = _rand_xy((0.45, -0.6, 0.02))
-    posY2 = _rand_xy((0.25, 0.0, 0.02))
-    posO2 = _rand_xy((0.25, -0.2, 0.02))
+
+    posR1 = np.array([.3,  -.4 , 0.02])
+    posG1 = np.array([.5, -.3, 0.02])
+    posB1 = np.array([.6, -.1 , 0.02])
+    posY1 = np.array([.4, -.1 , 0.02])
+    posO1 = np.array([.4, 0 , 0.02])
+    posR2 = np.array([.5, -.4 , 0.02])
+    posG2 = np.array([.4, -.4 , 0.02])
+    posB2 = np.array([.5, 0, 0.02])
+    posY2 = np.array([.4, -.2 , 0.02])
+    posO2 = np.array([.4, -.3 , 0.02])
+
+
 
     cubeR1 = scene.add_entity(
         gs.morphs.Box(size=(0.04, 0.04, 0.04), pos= posR1),

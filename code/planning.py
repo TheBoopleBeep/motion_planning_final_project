@@ -262,7 +262,7 @@ class PlannerInterface:
         Returns:
             True if all collisions are gripper-to-attached-object, False otherwise
         """
-        allowed_collision_names = {"left_finger", "right_finger", "hand", "link7"}
+        allowed_collision_names = {"left_finger", "right_finger", "hand", "link7", "link6"}
         
         for a, b in collision_pairs:
             name_a = self.scene.rigid_solver.geoms[a].link.name
