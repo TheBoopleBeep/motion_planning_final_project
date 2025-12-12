@@ -113,8 +113,8 @@ def create_scene_10blocks() -> Tuple[Any, Any, Dict[str, Any], Any]:
     plane = scene.add_entity(gs.morphs.Plane())
     # add some random noise up to 5 cm in x/y
 
-    posR = np.array([.3,  -.4 , 0.02])
-    posG = np.array([.5, -.1, 0.02])
+    posG = np.array([.3,  -.4 , 0.02])
+    posR = np.array([.5, -.1, 0.02])
     posB = np.array([.6, .1 , 0.02])
     posY = np.array([.4, .1 , 0.02])
     posM = np.array([.4, .2 , 0.02])

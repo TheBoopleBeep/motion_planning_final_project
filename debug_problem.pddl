@@ -1,4 +1,4 @@
-(define (problem replanned-blocks)
+(define (problem tower-blocks)
   (:domain blocks-world)
 
   (:objects r g b y m c o p k s l n bb - block)

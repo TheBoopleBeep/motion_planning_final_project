@@ -6,7 +6,6 @@
   (:predicates
     (on ?x - block ?y - block)  ; block x is on block y
     (clear ?x - block)  ; block x has nothing on top
-    (ontable ?x - block)  ; block x is on the table
     (holding ?x - block)  ; robot is holding block x
     (placedleft ?x - block); block is in right position
     (placedright ?x - block); block is in right position
@@ -15,20 +14,20 @@
   
   (:action pick
     :parameters (?x - block)
-    :precondition (and (clear ?x) (ontable ?x) (handempty)) ; block x is clear and on table and hand is empty
-    :effect (and (holding ?x) (not (clear ?x)) (not (ontable ?x)) (not (handempty))) ; x is held and not on table and hand is not empty
+    :precondition (and (clear ?x) (handempty)) ; block x is clear  and hand is empty
+    :effect (and (holding ?x) (not (clear ?x)) (not (handempty))) ; x is held and hand is not empty
   )
   
   (:action placeLeft
     :parameters (?x - block)
     :precondition (holding ?x)  ; holding x
-    :effect (and (clear ?x) (ontable ?x) (handempty) (not (holding ?x)) (placedleft ?x))  ; x is clear and on table and not held and in leftpos
+    :effect (and (clear ?x) (handempty) (not (holding ?x)) (placedleft ?x))  ; x is clear  and not held and in leftpos
   )
 
   (:action placeRight
     :parameters (?x - block)
     :precondition (holding ?x)  ; holding x
-    :effect (and (clear ?x) (ontable ?x) (handempty) (not (holding ?x)) (placedright ?x))  ; x is clear and on table and not held and in rightpos
+    :effect (and (clear ?x) (handempty) (not (holding ?x)) (placedright ?x))  ; x is clear and not held and in rightpos
   )
   
   (:action unstack

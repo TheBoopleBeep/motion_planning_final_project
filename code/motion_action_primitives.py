@@ -10,10 +10,19 @@ GRIPPER_OPEN_POSITION = 0.04
 JACOBIAN_CONVERGENCE_GAIN = 4.0
 MAX_JOINT_CORRECTION = 0.02  # radians
 DEFAULT_ORIENTATION = np.array([0, 1, 0, 0])
+ORIS_TO_EXPLORE = [
+    DEFAULT_ORIENTATION,
+    np.array([0, -0.966,  0.259, 0]),
+    np.array([0, -0.866,  0.5, 0]),
+    np.array([0, -0.707,   0.707, 0]),
+    np.array([0, -0.966,  -0.259, 0]),
+    np.array([0, -0.866,  -.5, 0]),
+    np.array([0, -0.707,   -0.707, 0])
+    ]
 
 
 def _apply_jacobian_correction(franka, scene, end_effector, target_pos, tolerance,
-                               motors_dof, fingers_dof, max_iterations=10, gripper_closed=True):
+                               motors_dof, fingers_dof, max_iterations=7, gripper_closed=True):
     """
     Apply Jacobian-based position correction to reach target position.
     
@@ -83,7 +92,7 @@ def _apply_jacobian_correction(franka, scene, end_effector, target_pos, toleranc
         print(f"  \u26a0 Jacobian correction insufficient (error: {final_error:.6f}m), continuing...")
 
 
-def move_while_closed(franka, scene, pos, quat=DEFAULT_ORIENTATION, ignore_collisions=False, max_retries=30, 
+def move_while_closed(franka, scene, pos, quat=DEFAULT_ORIENTATION, ignore_collisions=False, max_retries=5, 
                      tolerance=0.01, waypoints=-1, planner='BITstar', attached_object=None):
     """
     Move robot with gripper closed to target position, maintaining grip on held object.
@@ -114,6 +123,9 @@ def move_while_closed(franka, scene, pos, quat=DEFAULT_ORIENTATION, ignore_colli
     
     # Retry loop for IK and path planning
     for attempt in range(max_retries):
+        if attempt+1 == max_retries:
+            ignore_collisions = True
+            print("  Last attempt, ignoring collisions")
         # Compute inverse kinematics
         qpos = franka.inverse_kinematics(link=end_effector, pos=pos, quat=quat)
         
@@ -139,7 +151,7 @@ def move_while_closed(franka, scene, pos, quat=DEFAULT_ORIENTATION, ignore_colli
                 qpos_goal=qpos,
                 num_waypoints=waypoints,
                 planner=planner,
-                timeout=20.0,
+                timeout=6,
                 attached_object=attached_object,
                 ignore_collisions=ignore_collisions
             )
@@ -207,7 +219,7 @@ def move_while_closed(franka, scene, pos, quat=DEFAULT_ORIENTATION, ignore_colli
                 print(f"  Position error exceeds tolerance, using Jacobian correction...")
                 _apply_jacobian_correction(
                     franka, scene, end_effector, original_pos, tolerance,
-                    motors_dof, fingers_dof, max_iterations=10, gripper_closed=True
+                    motors_dof, fingers_dof, max_iterations=7, gripper_closed=True
                 )
                 return
             
@@ -223,7 +235,7 @@ def move_while_closed(franka, scene, pos, quat=DEFAULT_ORIENTATION, ignore_colli
     raise RuntimeError(f"Path planning failed for position {original_pos}")
 
 def move_while_open(franka, scene, pos, quat=DEFAULT_ORIENTATION, max_retries=10, tolerance=0.011, waypoints=-1, 
-                   planner='BITstar', attached_object=None, waypoint_scale = .75, ignore_collisions=False):
+                   planner='BITstar', attached_object=None, waypoint_scale = .75, ignore_collisions=False, adjust_orientation=True):
     """
     Move robot with gripper open to target position.
     
@@ -243,6 +255,14 @@ def move_while_open(franka, scene, pos, quat=DEFAULT_ORIENTATION, max_retries=10
     original_pos = np.array(pos, dtype=np.float64)
     
     for attempt in range(max_retries):
+        #explore different orientations if enabled
+        if adjust_orientation:
+            index = attempt % len(ORIS_TO_EXPLORE)
+            quat = ORIS_TO_EXPLORE[index]
+            print(f"  Trying orientation {quat}")
+        if attempt+1 == max_retries:
+            ignore_collisions = True
+            print("  Last attempt, ignoring collisions")
         qpos = franka.inverse_kinematics(
             link=end_effector,
             pos=pos,
@@ -268,7 +288,7 @@ def move_while_open(franka, scene, pos, quat=DEFAULT_ORIENTATION, max_retries=10
                 qpos_goal=qpos,
                 num_waypoints=waypoints,
                 planner=planner,
-                timeout=20.0,
+                timeout=6.0,
                 attached_object=attached_object,
                 ignore_collisions=ignore_collisions,
                 waypoint_scale=waypoint_scale

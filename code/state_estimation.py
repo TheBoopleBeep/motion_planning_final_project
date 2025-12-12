@@ -26,7 +26,6 @@ class TowerCube:
     position: np.ndarray
     on: str = None
     clear: bool = True
-    ontable: bool = True
 
 @dataclass
 class adjacentCube:
@@ -58,7 +57,6 @@ class TwoTowerCube:
     position: np.ndarray
     on: str = None
     clear: bool = True
-    ontable: bool = True
     placedleft: bool = False
     placedright: bool = False
     
@@ -142,7 +140,6 @@ class StateEstimation:
         for block in self.block_info:
             block.on = None
             block.clear = True
-            block.ontable = True
         
         # Determine stacking relationships
         for i in range(len(self.block_info)):
@@ -176,7 +173,6 @@ class StateEstimation:
         if horizontal_aligned and vertical_aligned:
             top_block.on = bottom_block.name
             bottom_block.clear = False
-            top_block.ontable = False
     
     def update_gripper_state(self):
         """
@@ -210,8 +206,6 @@ class StateEstimation:
         match self.problem:
             case "tower":
                 for block in self.block_info:
-                    if block.ontable:
-                        pddl_facts.append(f"(ontable {block.name})")
                     if block.on is not None:
                         pddl_facts.append(f"(on {block.name} {block.on})")
                     if block.clear:
@@ -232,8 +226,6 @@ class StateEstimation:
                         pddl_facts.append(f"(placed {block.name})")
             case 'towers':
                 for block in self.block_info:
-                    if block.ontable:
-                        pddl_facts.append(f"(ontable {block.name})")
                     if block.on is not None:
                         pddl_facts.append(f"(on {block.name} {block.on})")
                     if block.clear:
@@ -276,10 +268,9 @@ class StateEstimation:
         """
         Compute how predicates change after a PICK action.
         
-        PICK action preconditions: (clear ?x), (ontable ?x), (handempty)
+        PICK action preconditions: (clear ?x), (handempty)
         PICK action effects: 
             - Add: (holding ?x), NOT (handempty)
-            - Remove: (clear ?x), (ontable ?x), (handempty)
         
         Parameters:
             block_name: Name of the block being picked
@@ -292,7 +283,6 @@ class StateEstimation:
         
         # Remove facts
         predicted_facts.discard(f"(clear {block_name})")
-        predicted_facts.discard(f"(ontable {block_name})")
         predicted_facts.discard("(handempty)")
         
         # Add facts
@@ -341,7 +331,6 @@ class StateEstimation:
         for block in self.block_info:
             block.on = None
             block.clear = True
-            block.ontable = True
             block.placedleft = False
             block.placedright = False
         
@@ -767,8 +756,8 @@ class StateEstimation:
             print("???")
             # Define goal: build 12-block tower (matching 10_block_problem.pddl)
             goal_config = [
-                ('on', 'g', 'r'),
-                ('on', 'b', 'g'),
+                ('on', 'r', 'g'),
+                ('on', 'b', 'r'),
                 ('on', 'y', 'b'),
                 ('on', 'm', 'y'),
                 ('on', 'c', 'm'),
@@ -831,11 +820,11 @@ class StateEstimation:
         print("Current state:")
         for block in self.block_info:
             if self.problem == "tower":
-                print(f"  {block.name}: on={block.on}, clear={block.clear}, ontable={block.ontable}")
+                print(f"  {block.name}: on={block.on}, clear={block.clear}")
             elif self.problem == "adjacency":
                 print(f"  {block.name}: NNeighbor={block.NNeighbor}, SNeighbor={block.SNeighbor}, ENeighbor={block.ENeighbor}, WNeighbor={block.WNeighbor}, longDiag={block.longDiag}, placed={block.placed}")
             elif self.problem == "towers":
-                print(f"  {block.name}: on={block.on}, clear={block.clear}, ontable={block.ontable}, placedleft={block.placedleft}, placedright={block.placedright}")
+                print(f"  {block.name}: on={block.on}, clear={block.clear}, placedleft={block.placedleft}, placedright={block.placedright}")
             elif self.problem == "special_tower":
                 print(f" {block.name}: placed={block.placed}, oriented={block.oriented}, relative={block.relative}, relative_layered={block.relative_layered}")
             else:
